@@ -1,0 +1,27 @@
+"""Domain models."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime
+
+
+@dataclass
+class Article:
+    content_id: int
+    title: str
+    lead: str
+    url: str
+    image_url: str | None
+    published_at: datetime | None
+    category: str | None
+    title_en: str | None = None
+    lead_en: str | None = None
+
+    @property
+    def display_title(self) -> str:
+        return self.title_en or self.title
+
+    @property
+    def display_lead(self) -> str:
+        return self.lead_en if self.lead_en is not None else self.lead
