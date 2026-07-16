@@ -44,6 +44,18 @@ async def run_cycle(
         logger.warning("No articles fetched this cycle")
         return
 
+    if config.include_categories or config.skip_categories:
+        kept = [a for a in articles if config.is_category_allowed(a.category)]
+        if len(kept) < len(articles):
+            logger.info(
+                "Skipped %d articles by category filter (%s)",
+                len(articles) - len(kept),
+                f"include: {', '.join(config.include_categories)}"
+                if config.include_categories
+                else f"skip: {', '.join(config.skip_categories)}",
+            )
+        articles = kept
+
     new_articles = [a for a in articles if not storage.is_posted(a.content_id)]
     logger.info("Fetched %d articles, %d new", len(articles), len(new_articles))
 
@@ -88,20 +100,42 @@ async def run(config: Config) -> None:
     storage = Storage(config.db_path)
     news = NewsClient(fetch_limit=config.news_fetch_limit)
     translator = Translator(
-        config.deepl_api_key, config.translate_lead, config.lead_max_chars
+        config.deepl_api_key,
+        # Leads hidden by the post style are never displayed — don't translate them.
+        config.translate_lead and config.post_full_text,
+        config.lead_max_chars,
     )
-    sender = TelegramSender(config.telegram_bot_token, config.telegram_channel_id)
+    sender = TelegramSender(
+        config.telegram_bot_token,
+        config.telegram_channel_id,
+        with_image=config.post_with_image,
+        full_text=config.post_full_text,
+    )
 
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stop.set)
 
+    if config.include_categories:
+        category_filter = "include only " + ",".join(config.include_categories)
+        if config.skip_categories:
+            logger.warning(
+                "Both INCLUDE_CATEGORIES and SKIP_CATEGORIES are set; "
+                "SKIP_CATEGORIES is ignored"
+            )
+    elif config.skip_categories:
+        category_filter = "skip " + ",".join(config.skip_categories)
+    else:
+        category_filter = "all categories"
     logger.info(
-        "Bot started: polling every %d min, translate_lead=%s, max %d posts/cycle",
+        "Bot started: polling every %d min, translate_lead=%s, max %d posts/cycle, "
+        "style=%s, categories: %s",
         config.poll_interval_minutes,
         config.translate_lead,
         config.max_posts_per_cycle,
+        config.post_style,
+        category_filter,
     )
     try:
         while not stop.is_set():

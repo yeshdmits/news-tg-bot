@@ -34,6 +34,40 @@ def _get_int(name: str, default: int) -> int:
         raise ConfigError(f"{name} must be an integer, got {raw!r}") from exc
 
 
+def _get_category_list(name: str) -> tuple[str, ...]:
+    """Comma-separated category paths, normalized to hashtag form
+    (lowercase, '/' and '-' become '_') to match Article.category."""
+    raw = os.environ.get(name, "")
+    items = []
+    for part in raw.split(","):
+        part = part.strip().strip("/").lower().replace("/", "_").replace("-", "_")
+        if part:
+            items.append(part)
+    return tuple(items)
+
+
+def _matches_any(category: str | None, prefixes: tuple[str, ...]) -> bool:
+    """True if the category equals a prefix or is a subcategory of one."""
+    if not category:
+        return False
+    return any(
+        category == prefix or category.startswith(prefix + "_")
+        for prefix in prefixes
+    )
+
+
+POST_STYLES = ("photo_full", "photo_short", "text_full", "text_short")
+
+
+def _get_post_style(name: str, default: str) -> str:
+    raw = os.environ.get(name, "").strip().lower() or default
+    if raw not in POST_STYLES:
+        raise ConfigError(
+            f"{name} must be one of {', '.join(POST_STYLES)}, got {raw!r}"
+        )
+    return raw
+
+
 @dataclass(frozen=True)
 class Config:
     telegram_bot_token: str
@@ -47,6 +81,28 @@ class Config:
     lead_max_chars: int = 300
     max_posts_per_cycle: int = 5
     skip_initial_backlog: bool = True
+    skip_categories: tuple[str, ...] = ()
+    include_categories: tuple[str, ...] = ()
+    post_style: str = "photo_full"
+
+    @property
+    def post_with_image(self) -> bool:
+        return self.post_style.startswith("photo")
+
+    @property
+    def post_full_text(self) -> bool:
+        return self.post_style.endswith("full")
+
+    def is_category_allowed(self, category: str | None) -> bool:
+        """Category filter, matching by prefix (an entry covers its subcategories).
+
+        INCLUDE_CATEGORIES non-empty: only those categories pass (skip list
+        is ignored). Otherwise SKIP_CATEGORIES non-empty: everything but those
+        passes. Both empty: everything passes.
+        """
+        if self.include_categories:
+            return _matches_any(category, self.include_categories)
+        return not _matches_any(category, self.skip_categories)
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -61,4 +117,7 @@ class Config:
             lead_max_chars=_get_int("LEAD_MAX_CHARS", 300),
             max_posts_per_cycle=_get_int("MAX_POSTS_PER_CYCLE", 5),
             skip_initial_backlog=_get_bool("SKIP_INITIAL_BACKLOG", True),
+            skip_categories=_get_category_list("SKIP_CATEGORIES"),
+            include_categories=_get_category_list("INCLUDE_CATEGORIES"),
+            post_style=_get_post_style("POST_STYLE", "photo_full"),
         )

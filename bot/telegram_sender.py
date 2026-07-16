@@ -16,9 +16,11 @@ CAPTION_LIMIT = 1024
 TEXT_LIMIT = 4096
 
 
-def build_caption(article: Article, limit: int = CAPTION_LIMIT) -> str:
+def build_caption(
+    article: Article, limit: int = CAPTION_LIMIT, include_lead: bool = True
+) -> str:
     title = html.escape(article.display_title)
-    lead = html.escape(article.display_lead)
+    lead = html.escape(article.display_lead) if include_lead else ""
     footer = f'\n\n<a href="{html.escape(article.url, quote=True)}">Read more</a>'
     if article.category:
         footer += f" | #{article.category}"
@@ -33,9 +35,17 @@ def build_caption(article: Article, limit: int = CAPTION_LIMIT) -> str:
 
 
 class TelegramSender:
-    def __init__(self, bot_token: str, channel_id: str) -> None:
+    def __init__(
+        self,
+        bot_token: str,
+        channel_id: str,
+        with_image: bool = True,
+        full_text: bool = True,
+    ) -> None:
         self._api_base = f"https://api.telegram.org/bot{bot_token}"
         self._channel_id = channel_id
+        self._with_image = with_image
+        self._full_text = full_text
         self._client = httpx.AsyncClient(timeout=30.0)
 
     async def close(self) -> None:
@@ -74,14 +84,13 @@ class TelegramSender:
         return False
 
     async def send_article(self, article: Article) -> bool:
-        caption = build_caption(article)
-        if article.image_url:
+        if self._with_image and article.image_url:
             ok = await self._call(
                 "sendPhoto",
                 {
                     "chat_id": self._channel_id,
                     "photo": article.image_url,
-                    "caption": caption,
+                    "caption": build_caption(article, include_lead=self._full_text),
                     "parse_mode": "HTML",
                 },
             )
@@ -91,12 +100,19 @@ class TelegramSender:
                 "sendPhoto failed for %d, falling back to text message",
                 article.content_id,
             )
+        if self._with_image:
+            # Text fallback still shows the article image via the link preview.
+            link_preview = {"url": article.url, "prefer_large_media": True}
+        else:
+            link_preview = {"is_disabled": True}
         return await self._call(
             "sendMessage",
             {
                 "chat_id": self._channel_id,
-                "text": build_caption(article, limit=TEXT_LIMIT),
+                "text": build_caption(
+                    article, limit=TEXT_LIMIT, include_lead=self._full_text
+                ),
                 "parse_mode": "HTML",
-                "link_preview_options": {"url": article.url, "prefer_large_media": True},
+                "link_preview_options": link_preview,
             },
         )
