@@ -53,12 +53,12 @@ Each source entry:
 | `type` | yes | `json` or `xml` |
 | `url` | yes | Feed URL |
 | `language` | yes | Source language (DeepL code, e.g. `de`, `fr`). **`en` disables translation entirely** for this source |
+| `category` | yes | The `#hashtag` posted with this source's messages (normalized: lowercase, `/` and `-` → `_`). Used when the feed item carries no category of its own via `mapping.category`, and by the `INCLUDE_CATEGORIES`/`SKIP_CATEGORIES` filters |
 | `schema` | json only | Inline JSON Schema the fetched payload must satisfy. Keep it simple — require only the shape the mapping needs |
 | `schema_file` | xml only | Path to an XSD, relative to the sources file. Keep it lax (`processContents="lax"`/`skip`) — constrain only the elements the mapping reads |
 | `mapping` | yes | Where Article fields live in the payload, see below |
 | `queries` | no | List of query-param objects; the URL is fetched once per entry and results merged (useful for APIs that need several calls, e.g. one per time window). The string `"{limit}"` is replaced with `NEWS_FETCH_LIMIT` |
 | `url_base` | no | Prefixed onto extracted URLs that start with `/` |
-| `default_category` | no | Category hashtag when the feed has none — also makes the source addressable by `INCLUDE_CATEGORIES`/`SKIP_CATEGORIES` |
 | `namespaces` | xml only | XML namespace prefixes used in mapping paths, e.g. `{"media": "http://search.yahoo.com/mrss/"}` |
 
 The `mapping` object (`items`, `id`, `title`, `url` required; `lead`, `image`, `published`, `category`, `id_pattern` optional):
@@ -100,12 +100,12 @@ With a `*_short` style, leads are never displayed, so the bot skips translating 
 
 ### Categories
 
-An article's category comes from the source feed via the `category` mapping path (normalized to hashtag form: lowercase, `/` and `-` → `_`), or from the source's `default_category` when the feed carries none. It is shown as the hashtag on posted messages — the easiest way to discover a source's categories is to watch its posts (or its feed data directly).
+Every posted message carries a `#hashtag`: the article's category from the feed via the `category` mapping path (normalized to hashtag form: `/` and `-` → `_`), falling back to the source's required `category` field when the feed item carries none. The easiest way to discover a source's categories is to watch its posts (or its feed data directly).
 
 Category filters apply globally across all sources. Both lists match by prefix, so a top-level category covers all of its subcategories (`sport` also matches `sport_fussball`):
 
 - Both lists empty → every category is posted.
-- `INCLUDE_CATEGORIES` set → **only** matching articles are posted; `SKIP_CATEGORIES` is ignored (a warning is logged if both are set). Articles without a category are excluded — give sources a `default_category` you include, or they go silent.
+- `INCLUDE_CATEGORIES` set → **only** matching articles are posted; `SKIP_CATEGORIES` is ignored (a warning is logged if both are set). Remember to include each source's `category` (or its feed categories), or that source goes silent.
 - Only `SKIP_CATEGORIES` set → everything except matching articles is posted.
 
 ## Running Locally (without Docker)

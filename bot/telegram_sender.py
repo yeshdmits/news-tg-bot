@@ -21,9 +21,10 @@ def build_caption(
 ) -> str:
     title = html.escape(article.display_title)
     lead = html.escape(article.display_lead) if include_lead else ""
-    footer = f'\n\n<a href="{html.escape(article.url, quote=True)}">Read more</a>'
-    if article.category:
-        footer += f" | #{article.category}"
+    footer = (
+        f'\n\n<a href="{html.escape(article.url, quote=True)}">Read more</a>'
+        f" | #{article.category}"
+    )
 
     caption = f"<b>{title}</b>"
     budget = limit - len(caption) - len(footer)

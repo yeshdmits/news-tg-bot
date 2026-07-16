@@ -37,7 +37,7 @@ Most useful options (all optional, see `.env.example` for the full list):
 | Variable | Default | Description |
 |---|---|---|
 | `POST_STYLE` | `photo_full` | `photo_full` (image + title + summary), `photo_short` (image + title), `text_full`, `text_short` |
-| `SKIP_CATEGORIES` | *(empty)* | Categories to skip, comma-separated — e.g. `sport` skips all sport news. Categories come from each source's feed (the hashtag on posted messages), or from a source's `default_category` in `sources.json` |
+| `SKIP_CATEGORIES` | *(empty)* | Categories to skip, comma-separated — e.g. `sport` skips all sport news. Categories are the hashtags on posted messages: from each source's feed, or the source's `category` in `sources.json` |
 | `INCLUDE_CATEGORIES` | *(empty)* | Post **only** these categories (same format). When set, `SKIP_CATEGORIES` is ignored |
 | `POLL_INTERVAL_MINUTES` | `30` | How often to check for news |
 | `MAX_POSTS_PER_CYCLE` | `5` | Max posts per check (extras are queued) |

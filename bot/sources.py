@@ -57,10 +57,12 @@ class SourceSpec:
     type: str
     url: str
     language: str
+    # The hashtag posted to Telegram when the feed item carries no category
+    # of its own (via mapping.category).
+    category: str
     mapping: FieldMapping
     queries: tuple[dict[str, str], ...] = ({},)
     url_base: str | None = None
-    default_category: str | None = None
     namespaces: dict[str, str] = field(default_factory=dict)
     json_schema: dict | None = None
     xml_schema: xmlschema.XMLSchema | None = None
@@ -166,15 +168,18 @@ def _parse_source(raw: object, base_dir: Path, where: str) -> SourceSpec:
         except (OSError, xmlschema.XMLSchemaException) as exc:
             raise ConfigError(f"{where}: cannot load XSD {schema_path}: {exc}") from exc
 
+    category = _require_str(raw, "category", where)
+    category = category.strip("/").lower().replace("/", "_").replace("-", "_")
+
     return SourceSpec(
         name=name,
         type=source_type,
         url=_require_str(raw, "url", where),
         language=_require_str(raw, "language", where).lower(),
+        category=category,
         mapping=_parse_mapping(raw, where),
         queries=_parse_queries(raw, where),
         url_base=raw.get("url_base") or None,
-        default_category=raw.get("default_category") or None,
         namespaces={str(k): str(v) for k, v in namespaces.items()},
         json_schema=json_schema,
         xml_schema=xml_schema,

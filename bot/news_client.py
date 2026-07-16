@@ -91,7 +91,7 @@ def _build_article(
         url=url,
         image_url=image_url or None,
         published_at=_parse_date(published_raw, spec.mapping.published_format),
-        category=_category_hashtag(category_raw) or spec.default_category,
+        category=_category_hashtag(category_raw) or spec.category,
         language=spec.language,
     )
 

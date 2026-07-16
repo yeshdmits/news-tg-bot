@@ -46,10 +46,8 @@ def _get_category_list(name: str) -> tuple[str, ...]:
     return tuple(items)
 
 
-def _matches_any(category: str | None, prefixes: tuple[str, ...]) -> bool:
+def _matches_any(category: str, prefixes: tuple[str, ...]) -> bool:
     """True if the category equals a prefix or is a subcategory of one."""
-    if not category:
-        return False
     return any(
         category == prefix or category.startswith(prefix + "_")
         for prefix in prefixes
@@ -94,7 +92,7 @@ class Config:
     def post_full_text(self) -> bool:
         return self.post_style.endswith("full")
 
-    def is_category_allowed(self, category: str | None) -> bool:
+    def is_category_allowed(self, category: str) -> bool:
         """Category filter, matching by prefix (an entry covers its subcategories).
 
         INCLUDE_CATEGORIES non-empty: only those categories pass (skip list

@@ -14,7 +14,7 @@ class Article:
     url: str
     image_url: str | None
     published_at: datetime | None
-    category: str | None
+    category: str
     language: str = "de"
     title_en: str | None = None
     lead_en: str | None = None

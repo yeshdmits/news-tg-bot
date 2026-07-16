@@ -25,18 +25,45 @@ def bbc(specs):
 
 
 def test_default_sources_file_loads(specs):
-    assert set(specs) == {"20min", "bbc-world"}
-    assert specs["20min"].type == "json"
-    assert specs["20min"].language == "de"
-    assert len(specs["20min"].queries) == 3
-    assert specs["bbc-world"].type == "xml"
-    assert specs["bbc-world"].language == "en"
-    assert specs["bbc-world"].xml_schema is not None
+    """The shipped sources.json parses into valid specs, whatever it contains.
+
+    Deliberately generic: adding a source must not require touching tests.
+    """
+    assert specs
+    for spec in specs.values():
+        assert spec.type in ("json", "xml")
+        assert spec.language
+        assert spec.queries
+        if spec.type == "json":
+            assert spec.json_schema is not None
+        else:
+            assert spec.xml_schema is not None
 
 
 def test_load_sources_missing_file():
     with pytest.raises(ConfigError):
         load_sources("does/not/exist.json")
+
+
+def test_load_sources_requires_category(tmp_path):
+    import json
+
+    source = {
+        "name": "acme",
+        "type": "json",
+        "url": "https://example.com/feed.json",
+        "language": "en",
+        "schema": {"type": "object"},
+        "mapping": {"items": "items", "id": "id", "title": "title", "url": "url"},
+    }
+    file = tmp_path / "sources.json"
+    file.write_text(json.dumps({"sources": [source]}))
+    with pytest.raises(ConfigError, match="category"):
+        load_sources(str(file))
+
+    source["category"] = "Acme/Top-News"
+    file.write_text(json.dumps({"sources": [source]}))
+    assert load_sources(str(file))[0].category == "acme_top_news"
 
 
 TWENTY_MIN_PAYLOAD = {
@@ -84,7 +111,8 @@ def test_parse_20min_payload(twenty_min):
     second = articles[1]
     assert second.image_url == "https://img/small.jpg"
     assert second.url == "https://www.20min.ch/story/456"
-    assert second.category is None
+    # No category in the feed item -> the source's required category.
+    assert second.category == "20min"
 
 
 def test_parse_20min_rejects_wrong_shape(twenty_min):

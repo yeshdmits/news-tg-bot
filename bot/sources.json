@@ -10,6 +10,7 @@
         {"tenantId": "6", "limit": "{limit}", "timeFrame": "24h"}
       ],
       "language": "de",
+      "category": "20min",
       "url_base": "https://www.20min.ch",
       "schema": {
         "type": "object",
@@ -43,11 +44,28 @@
       }
     },
     {
+      "name": "npr-news",
+      "type": "xml",
+      "url": "https://feeds.npr.org/1001/rss.xml",
+      "language": "en",
+      "category": "npr_news",
+      "schema_file": "schemas/npr-news.xsd",
+      "mapping": {
+        "items": "channel/item",
+        "id": "guid",
+        "title": "title",
+        "lead": "description",
+        "url": "link",
+        "published": "pubDate",
+        "published_format": "rfc822"
+      }
+    },
+    {
       "name": "bbc-world",
       "type": "xml",
       "url": "https://feeds.bbci.co.uk/news/world/rss.xml",
       "language": "en",
-      "default_category": "bbc_world",
+      "category": "bbc_world",
       "namespaces": {"media": "http://search.yahoo.com/mrss/"},
       "schema_file": "schemas/bbc-world.xsd",
       "mapping": {
