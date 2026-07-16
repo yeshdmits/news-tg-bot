@@ -8,15 +8,21 @@ from datetime import datetime
 
 @dataclass
 class Article:
-    content_id: int
+    content_id: str
     title: str
     lead: str
     url: str
     image_url: str | None
     published_at: datetime | None
     category: str | None
+    language: str = "de"
     title_en: str | None = None
     lead_en: str | None = None
+
+    @property
+    def source(self) -> str:
+        """The source name prefix of the namespaced content id."""
+        return self.content_id.split(":", 1)[0]
 
     @property
     def display_title(self) -> str:

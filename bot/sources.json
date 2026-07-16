@@ -1,0 +1,65 @@
+{
+  "sources": [
+    {
+      "name": "20min",
+      "type": "json",
+      "url": "https://api.20min.ch/kaia/v1/most-consumed",
+      "queries": [
+        {"tenantId": "6", "limit": "{limit}", "timeFrame": "1h"},
+        {"tenantId": "6", "limit": "{limit}", "timeFrame": "6h"},
+        {"tenantId": "6", "limit": "{limit}", "timeFrame": "24h"}
+      ],
+      "language": "de",
+      "url_base": "https://www.20min.ch",
+      "schema": {
+        "type": "object",
+        "required": ["items"],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "contentId": {"type": ["integer", "string"]},
+                "title": {"type": ["string", "null"]},
+                "url": {"type": ["string", "null"]},
+                "lead": {"type": ["string", "null"]},
+                "publishedAt": {"type": ["string", "null"]}
+              }
+            }
+          }
+        }
+      },
+      "mapping": {
+        "items": "items",
+        "id": "contentId",
+        "title": "title",
+        "lead": "lead",
+        "url": "url",
+        "image": ["image.variants.big.src", "image.variants.small.src"],
+        "published": "publishedAt",
+        "published_format": "iso8601",
+        "category": "mainCategoryFullUrlPath"
+      }
+    },
+    {
+      "name": "bbc-world",
+      "type": "xml",
+      "url": "https://feeds.bbci.co.uk/news/world/rss.xml",
+      "language": "en",
+      "default_category": "bbc_world",
+      "namespaces": {"media": "http://search.yahoo.com/mrss/"},
+      "schema_file": "schemas/bbc-world.xsd",
+      "mapping": {
+        "items": "channel/item",
+        "id": "guid",
+        "title": "title",
+        "lead": "description",
+        "url": "link",
+        "image": "media:thumbnail@url",
+        "published": "pubDate",
+        "published_format": "rfc822"
+      }
+    }
+  ]
+}

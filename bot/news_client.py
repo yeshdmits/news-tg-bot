@@ -1,65 +1,197 @@
-"""Client for the public 20min.ch content API."""
+"""Generic news feed client: fetches, validates and parses configured sources."""
 
 from __future__ import annotations
 
 import logging
+import xml.etree.ElementTree as ET
 from datetime import datetime
+from email.utils import parsedate_to_datetime
 
 import httpx
+import jsonschema
+import xmlschema
 
 from .models import Article
+from .sources import SourceSpec
 
 logger = logging.getLogger(__name__)
 
-API_URL = "https://api.20min.ch/kaia/v1/most-consumed"
-SITE_BASE = "https://www.20min.ch"
-TENANT_ID = 6
-TIME_FRAMES = ("1h", "6h", "24h")
+
+class FeedValidationError(RuntimeError):
+    """Fetched payload does not match the source's validation schema."""
 
 
-def _parse_published_at(raw: str | None) -> datetime | None:
-    if not raw:
+def _parse_date(raw: object, fmt: str) -> datetime | None:
+    if not raw or not isinstance(raw, str):
         return None
+    if fmt == "rfc822":
+        try:
+            return parsedate_to_datetime(raw)
+        except (TypeError, ValueError):
+            return None
     try:
         return datetime.fromisoformat(raw.replace("Z", "+00:00"))
     except ValueError:
         return None
 
 
-def _category_hashtag(path: str | None) -> str | None:
+def _category_hashtag(path: object) -> str | None:
     """'sport/wm-2026-in-usa' -> 'sport_wm_2026_in_usa'"""
-    if not path:
+    if not path or not isinstance(path, str):
         return None
     tag = path.strip("/").replace("/", "_").replace("-", "_")
     return tag or None
 
 
-def parse_item(item: dict) -> Article | None:
-    content_id = item.get("contentId")
-    title = (item.get("title") or "").strip()
-    url = item.get("url") or ""
-    if not content_id or not title or not url:
-        return None
-    if url.startswith("/"):
-        url = SITE_BASE + url
+def _json_path(obj: object, path: str) -> object:
+    """Dot-separated dict descent; None on any miss."""
+    for part in path.split("."):
+        if not isinstance(obj, dict):
+            return None
+        obj = obj.get(part)
+    return obj
 
+
+def _xml_value(element: ET.Element, path: str, namespaces: dict[str, str]) -> str | None:
+    """Element text by path; an '@attr' suffix reads an attribute instead."""
+    if "@" in path:
+        elem_path, _, attr = path.rpartition("@")
+        target = element.find(elem_path, namespaces) if elem_path else element
+        value = target.get(attr) if target is not None else None
+        return value.strip() or None if value else None
+    text = element.findtext(path, default="", namespaces=namespaces)
+    return text.strip() or None
+
+
+def _build_article(
+    spec: SourceSpec,
+    raw_id: object,
+    title: str | None,
+    lead: str | None,
+    url: str | None,
+    image_url: str | None,
+    published_raw: object,
+    category_raw: object,
+) -> Article | None:
+    title = (title or "").strip()
+    url = (url or "").strip()
+    if raw_id in (None, "") or not title or not url:
+        return None
+    if url.startswith("/") and spec.url_base:
+        url = spec.url_base + url
+    unique_id = str(raw_id)
+    if spec.mapping.id_pattern:
+        match = spec.mapping.id_pattern.search(unique_id)
+        if match:
+            unique_id = match.group(1) if match.groups() else match.group(0)
+    return Article(
+        content_id=f"{spec.name}:{unique_id}",
+        title=title,
+        lead=(lead or "").strip(),
+        url=url,
+        image_url=image_url or None,
+        published_at=_parse_date(published_raw, spec.mapping.published_format),
+        category=_category_hashtag(category_raw) or spec.default_category,
+        language=spec.language,
+    )
+
+
+def _parse_json_item(item: dict, spec: SourceSpec) -> Article | None:
+    m = spec.mapping
     image_url = None
-    variants = (item.get("image") or {}).get("variants") or {}
-    for size in ("big", "small"):
-        src = (variants.get(size) or {}).get("src")
+    for path in m.image:
+        src = _json_path(item, path)
+        if isinstance(src, str) and src:
+            image_url = src
+            break
+    return _build_article(
+        spec,
+        raw_id=_json_path(item, m.id),
+        title=_str_or_none(_json_path(item, m.title)),
+        lead=_str_or_none(_json_path(item, m.lead)) if m.lead else None,
+        url=_str_or_none(_json_path(item, m.url)),
+        image_url=image_url,
+        published_raw=_json_path(item, m.published) if m.published else None,
+        category_raw=_json_path(item, m.category) if m.category else None,
+    )
+
+
+def _str_or_none(value: object) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def parse_json_payload(payload: object, spec: SourceSpec) -> list[Article]:
+    """Validate a JSON payload against the source schema and map it to Articles."""
+    if spec.json_schema is not None:
+        try:
+            jsonschema.validate(payload, spec.json_schema)
+        except jsonschema.ValidationError as exc:
+            raise FeedValidationError(
+                f"payload failed JSON Schema validation: {exc.message}"
+            ) from exc
+
+    items = _json_path(payload, spec.mapping.items)
+    if not isinstance(items, list):
+        return []
+    articles = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        try:
+            article = _parse_json_item(item, spec)
+        except (TypeError, ValueError) as exc:
+            logger.warning("Source %s: skipping unparseable item: %s", spec.name, exc)
+            continue
+        if article:
+            articles.append(article)
+    return articles
+
+
+def _parse_xml_item(element: ET.Element, spec: SourceSpec) -> Article | None:
+    m = spec.mapping
+    ns = spec.namespaces
+    image_url = None
+    for path in m.image:
+        src = _xml_value(element, path, ns)
         if src:
             image_url = src
             break
-
-    return Article(
-        content_id=int(content_id),
-        title=title,
-        lead=(item.get("lead") or "").strip(),
-        url=url,
+    return _build_article(
+        spec,
+        raw_id=_xml_value(element, m.id, ns),
+        title=_xml_value(element, m.title, ns),
+        lead=_xml_value(element, m.lead, ns) if m.lead else None,
+        url=_xml_value(element, m.url, ns),
         image_url=image_url,
-        published_at=_parse_published_at(item.get("publishedAt")),
-        category=_category_hashtag(item.get("mainCategoryFullUrlPath")),
+        published_raw=_xml_value(element, m.published, ns) if m.published else None,
+        category_raw=_xml_value(element, m.category, ns) if m.category else None,
     )
+
+
+def parse_xml_payload(text: str, spec: SourceSpec) -> list[Article]:
+    """Validate an XML payload against the source XSD and map it to Articles."""
+    if spec.xml_schema is not None:
+        try:
+            spec.xml_schema.validate(text)
+        except (xmlschema.XMLSchemaException, ET.ParseError) as exc:
+            raise FeedValidationError(
+                f"payload failed XSD validation: {exc}"
+            ) from exc
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError as exc:
+        raise FeedValidationError(f"malformed XML: {exc}") from exc
+
+    articles = []
+    for element in root.findall(spec.mapping.items, spec.namespaces):
+        try:
+            article = _parse_xml_item(element, spec)
+        except (TypeError, ValueError) as exc:
+            logger.warning("Source %s: skipping unparseable item: %s", spec.name, exc)
+            continue
+        if article:
+            articles.append(article)
+    return articles
 
 
 class NewsClient:
@@ -68,42 +200,45 @@ class NewsClient:
         self._client = httpx.AsyncClient(
             timeout=20.0,
             headers={"User-Agent": "news-aggr-bot/1.0"},
+            follow_redirects=True,
         )
 
     async def close(self) -> None:
         await self._client.aclose()
 
-    async def fetch_articles(self) -> list[Article]:
-        """Fetch articles across several time windows, deduplicated by content_id."""
-        seen: dict[int, Article] = {}
-        for time_frame in TIME_FRAMES:
-            try:
-                response = await self._client.get(
-                    API_URL,
-                    params={
-                        "tenantId": TENANT_ID,
-                        "limit": self._fetch_limit,
-                        "timeFrame": time_frame,
-                    },
-                )
-                response.raise_for_status()
-                items = response.json().get("items", [])
-            except (httpx.HTTPError, ValueError) as exc:
-                logger.warning("Failed to fetch timeFrame=%s: %s", time_frame, exc)
-                continue
+    async def fetch_articles(self, spec: SourceSpec) -> list[Article]:
+        """Fetch one source (one GET per configured query), deduplicated by id.
 
-            for item in items:
-                try:
-                    article = parse_item(item)
-                except (TypeError, ValueError) as exc:
-                    logger.warning("Skipping unparseable item: %s", exc)
-                    continue
-                if article and article.content_id not in seen:
-                    seen[article.content_id] = article
+        A schema-validation failure means the feed changed shape — the whole
+        source is skipped for this cycle rather than half-parsed.
+        """
+        seen: dict[str, Article] = {}
+        for query in spec.queries:
+            params = {
+                key: value.replace("{limit}", str(self._fetch_limit))
+                for key, value in query.items()
+            }
+            try:
+                response = await self._client.get(spec.url, params=params or None)
+                response.raise_for_status()
+                if spec.type == "json":
+                    parsed = parse_json_payload(response.json(), spec)
+                else:
+                    parsed = parse_xml_payload(response.text, spec)
+            except FeedValidationError as exc:
+                logger.error("Source %s: %s — skipping this cycle", spec.name, exc)
+                return []
+            except (httpx.HTTPError, ValueError) as exc:
+                logger.warning(
+                    "Source %s: fetch failed (params=%s): %s", spec.name, params, exc
+                )
+                continue
+            for article in parsed:
+                seen.setdefault(article.content_id, article)
 
         articles = list(seen.values())
         articles.sort(
             key=lambda a: a.published_at.timestamp() if a.published_at else 0.0,
             reverse=True,
         )
-        return articles
+        return articles[: self._fetch_limit]

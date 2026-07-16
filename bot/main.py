@@ -1,4 +1,4 @@
-"""Entry point: poll 20min.ch, translate new articles, post to Telegram."""
+"""Entry point: poll configured news sources, translate new articles, post to Telegram."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import signal
 from .config import Config, ConfigError
 from .models import Article
 from .news_client import NewsClient
+from .sources import SourceSpec, load_sources
 from .storage import Storage
 from .telegram_sender import TelegramSender
 from .translator import Translator
@@ -21,28 +22,75 @@ POST_DELAY_SECONDS = 2
 async def _translate(
     translator: Translator, storage: Storage, article: Article
 ) -> None:
+    if article.language == "en":
+        # display_title/display_lead fall back to the original text.
+        return
     cached = storage.get_translation(article.content_id)
     if cached:
         article.title_en, article.lead_en = cached
         return
     title_en, lead_en = await asyncio.to_thread(
-        translator.translate, article.title, article.lead
+        translator.translate, article.title, article.lead, article.language
     )
     article.title_en, article.lead_en = title_en, lead_en
     storage.save_translation(article.content_id, article.title, title_en, lead_en)
 
 
+def _skip_backlog_for_new_sources(
+    storage: Storage, new_articles: list[Article]
+) -> list[Article]:
+    """Mark articles of never-posted sources as seen without sending.
+
+    Applies per source, so adding a source to a running deployment doesn't
+    flood the channel with the feed's whole backlog.
+    """
+    fresh_sources = {
+        source
+        for source in {a.source for a in new_articles}
+        if not storage.has_any_posts(source)
+    }
+    if not fresh_sources:
+        return new_articles
+    skipped = [a for a in new_articles if a.source in fresh_sources]
+    logger.info(
+        "First run for %s: marking %d articles as posted without sending "
+        "(set SKIP_INITIAL_BACKLOG=false to post the backlog)",
+        ", ".join(sorted(fresh_sources)),
+        len(skipped),
+    )
+    for article in skipped:
+        storage.mark_posted(article.content_id, article.title)
+    return [a for a in new_articles if a.source not in fresh_sources]
+
+
 async def run_cycle(
     config: Config,
+    specs: list[SourceSpec],
     news: NewsClient,
     translator: Translator,
     sender: TelegramSender,
     storage: Storage,
 ) -> None:
-    articles = await news.fetch_articles()
+    articles: list[Article] = []
+    for spec in specs:
+        try:
+            fetched = await news.fetch_articles(spec)
+        except Exception:
+            logger.exception("Source %s: fetch failed", spec.name)
+            continue
+        if not fetched:
+            logger.warning("Source %s: no articles this cycle", spec.name)
+            continue
+        articles.extend(fetched)
     if not articles:
         logger.warning("No articles fetched this cycle")
         return
+
+    # Merge sources chronologically, newest first.
+    articles.sort(
+        key=lambda a: a.published_at.timestamp() if a.published_at else 0.0,
+        reverse=True,
+    )
 
     if config.include_categories or config.skip_categories:
         kept = [a for a in articles if config.is_category_allowed(a.category)]
@@ -59,15 +107,8 @@ async def run_cycle(
     new_articles = [a for a in articles if not storage.is_posted(a.content_id)]
     logger.info("Fetched %d articles, %d new", len(articles), len(new_articles))
 
-    if new_articles and config.skip_initial_backlog and not storage.has_any_posts():
-        logger.info(
-            "First run: marking %d existing articles as posted without sending "
-            "(set SKIP_INITIAL_BACKLOG=false to post the backlog)",
-            len(new_articles),
-        )
-        for article in new_articles:
-            storage.mark_posted(article.content_id, article.title)
-        return
+    if new_articles and config.skip_initial_backlog:
+        new_articles = _skip_backlog_for_new_sources(storage, new_articles)
 
     if len(new_articles) > config.max_posts_per_cycle:
         logger.info(
@@ -82,13 +123,13 @@ async def run_cycle(
         try:
             await _translate(translator, storage, article)
         except Exception:
-            logger.exception("Unexpected translation error for %d", article.content_id)
+            logger.exception("Unexpected translation error for %s", article.content_id)
         if await sender.send_article(article):
             storage.mark_posted(article.content_id, article.title)
-            logger.info("Posted %d: %s", article.content_id, article.display_title)
+            logger.info("Posted %s: %s", article.content_id, article.display_title)
         else:
             logger.warning(
-                "Failed to post %d, will retry next cycle", article.content_id
+                "Failed to post %s, will retry next cycle", article.content_id
             )
         await asyncio.sleep(POST_DELAY_SECONDS)
 
@@ -96,7 +137,7 @@ async def run_cycle(
     storage.cleanup_old(days=30)
 
 
-async def run(config: Config) -> None:
+async def run(config: Config, specs: list[SourceSpec]) -> None:
     storage = Storage(config.db_path)
     news = NewsClient(fetch_limit=config.news_fetch_limit)
     translator = Translator(
@@ -129,8 +170,9 @@ async def run(config: Config) -> None:
     else:
         category_filter = "all categories"
     logger.info(
-        "Bot started: polling every %d min, translate_lead=%s, max %d posts/cycle, "
-        "style=%s, categories: %s",
+        "Bot started: sources: %s, polling every %d min, translate_lead=%s, "
+        "max %d posts/cycle, style=%s, categories: %s",
+        ", ".join(spec.name for spec in specs),
         config.poll_interval_minutes,
         config.translate_lead,
         config.max_posts_per_cycle,
@@ -140,7 +182,7 @@ async def run(config: Config) -> None:
     try:
         while not stop.is_set():
             try:
-                await run_cycle(config, news, translator, sender, storage)
+                await run_cycle(config, specs, news, translator, sender, storage)
             except Exception:
                 logger.exception("Cycle failed, retrying next interval")
             try:
@@ -163,9 +205,10 @@ def main() -> None:
     )
     try:
         config = Config.from_env()
+        specs = load_sources(config.sources_path)
     except ConfigError as exc:
         raise SystemExit(f"Configuration error: {exc}") from exc
-    asyncio.run(run(config))
+    asyncio.run(run(config, specs))
 
 
 if __name__ == "__main__":

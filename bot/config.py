@@ -77,6 +77,7 @@ class Config:
     poll_interval_minutes: int = 30
     news_fetch_limit: int = 10
     db_path: str = "data/posted.db"
+    sources_path: str = "bot/sources.json"
     translate_lead: bool = True
     lead_max_chars: int = 300
     max_posts_per_cycle: int = 5
@@ -113,6 +114,7 @@ class Config:
             poll_interval_minutes=_get_int("POLL_INTERVAL_MINUTES", 30),
             news_fetch_limit=_get_int("NEWS_FETCH_LIMIT", 10),
             db_path=os.environ.get("DB_PATH", "data/posted.db"),
+            sources_path=os.environ.get("SOURCES_PATH", "bot/sources.json"),
             translate_lead=_get_bool("TRANSLATE_LEAD", True),
             lead_max_chars=_get_int("LEAD_MAX_CHARS", 300),
             max_posts_per_cycle=_get_int("MAX_POSTS_PER_CYCLE", 5),

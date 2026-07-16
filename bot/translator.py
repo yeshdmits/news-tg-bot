@@ -39,7 +39,7 @@ class Translator:
             ratio = usage.character.count / usage.character.limit
             if ratio >= STOP_THRESHOLD:
                 logger.warning(
-                    "DeepL quota at %.0f%% — skipping translation, posting German text",
+                    "DeepL quota at %.0f%% — skipping translation, posting original text",
                     ratio * 100,
                 )
                 return True
@@ -47,9 +47,11 @@ class Translator:
                 logger.warning("DeepL quota at %.0f%% of monthly limit", ratio * 100)
         return False
 
-    def translate(self, title: str, lead: str) -> tuple[str, str | None]:
+    def translate(
+        self, title: str, lead: str, source_lang: str = "de"
+    ) -> tuple[str, str | None]:
         """Return (title_en, lead_en). lead_en is None when lead translation
-        is disabled. Falls back to the original German text on any failure."""
+        is disabled. Falls back to the original text on any failure."""
         lead = truncate(lead, self._lead_max_chars)
         if self._quota_exceeded():
             return title, (lead if self._translate_lead else None)
@@ -59,10 +61,10 @@ class Translator:
             texts.append(lead)
         try:
             results = self._client.translate_text(
-                texts, source_lang="DE", target_lang="EN-US"
+                texts, source_lang=source_lang.upper(), target_lang="EN-US"
             )
         except deepl.DeepLException as exc:
-            logger.warning("DeepL translation failed, using German text: %s", exc)
+            logger.warning("DeepL translation failed, using original text: %s", exc)
             return title, (lead if self._translate_lead else None)
 
         title_en = results[0].text

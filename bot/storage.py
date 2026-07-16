@@ -4,6 +4,8 @@ An article row exists once we have seen (and possibly translated) it;
 ``posted_at`` is set only after the Telegram message was sent successfully.
 Caching translations means a failed Telegram send does not burn DeepL quota
 again on the next cycle.
+
+Content ids are strings namespaced by source name ("<source>:<unique id>").
 """
 
 from __future__ import annotations
@@ -17,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS articles (
-    content_id INTEGER PRIMARY KEY,
+    content_id TEXT PRIMARY KEY,
     title      TEXT NOT NULL,
     title_en   TEXT,
     lead_en    TEXT,
@@ -37,20 +39,23 @@ class Storage:
     def close(self) -> None:
         self._conn.close()
 
-    def is_posted(self, content_id: int) -> bool:
+    def is_posted(self, content_id: str) -> bool:
         row = self._conn.execute(
             "SELECT 1 FROM articles WHERE content_id = ? AND posted_at IS NOT NULL",
             (content_id,),
         ).fetchone()
         return row is not None
 
-    def has_any_posts(self) -> bool:
+    def has_any_posts(self, source: str) -> bool:
+        """True if any article of this source was ever posted."""
         row = self._conn.execute(
-            "SELECT 1 FROM articles WHERE posted_at IS NOT NULL LIMIT 1"
+            "SELECT 1 FROM articles "
+            "WHERE content_id LIKE ? || ':%' AND posted_at IS NOT NULL LIMIT 1",
+            (source,),
         ).fetchone()
         return row is not None
 
-    def get_translation(self, content_id: int) -> tuple[str, str | None] | None:
+    def get_translation(self, content_id: str) -> tuple[str, str | None] | None:
         """Return (title_en, lead_en) if this article was already translated."""
         row = self._conn.execute(
             "SELECT title_en, lead_en FROM articles WHERE content_id = ? AND title_en IS NOT NULL",
@@ -59,7 +64,7 @@ class Storage:
         return (row[0], row[1]) if row else None
 
     def save_translation(
-        self, content_id: int, title: str, title_en: str, lead_en: str | None
+        self, content_id: str, title: str, title_en: str, lead_en: str | None
     ) -> None:
         self._conn.execute(
             """
@@ -72,7 +77,7 @@ class Storage:
         )
         self._conn.commit()
 
-    def mark_posted(self, content_id: int, title: str) -> None:
+    def mark_posted(self, content_id: str, title: str) -> None:
         now = datetime.now(timezone.utc).isoformat()
         self._conn.execute(
             """

@@ -97,7 +97,7 @@ class TelegramSender:
             if ok:
                 return True
             logger.info(
-                "sendPhoto failed for %d, falling back to text message",
+                "sendPhoto failed for %s, falling back to text message",
                 article.content_id,
             )
         if self._with_image:

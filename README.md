@@ -1,6 +1,6 @@
-# 20min.ch Telegram News Bot
+# Telegram News Bot
 
-Watches [20min.ch](https://www.20min.ch/) for trending Swiss news, translates it to English with DeepL, and posts it to your Telegram channel.
+Watches the news sources defined in [`bot/sources.json`](bot/sources.json), translates non-English articles to English with DeepL, and posts them to your Telegram channel. Every source — a JSON API or an XML/RSS feed — is fully described by that config file (URL, payload schema, field mapping, language), so adding a new source means editing `sources.json` only, no code changes — see [bot/README.md](bot/README.md#news-sources).
 
 ## Quick Start
 
@@ -18,7 +18,7 @@ docker compose up -d
 docker compose logs -f
 ```
 
-That's it. The bot checks for trending articles every 30 minutes and posts new ones.
+That's it. The bot checks the configured sources every 30 minutes and posts new articles.
 
 > **No posts right away?** By default the first run marks current articles as seen without posting (to avoid flooding your channel). Set `SKIP_INITIAL_BACKLOG=false` in `.env` to post immediately.
 
@@ -37,7 +37,7 @@ Most useful options (all optional, see `.env.example` for the full list):
 | Variable | Default | Description |
 |---|---|---|
 | `POST_STYLE` | `photo_full` | `photo_full` (image + title + summary), `photo_short` (image + title), `text_full`, `text_short` |
-| `SKIP_CATEGORIES` | *(empty)* | Categories to skip, comma-separated — e.g. `sport` skips all sport news. Main categories: `schweiz`, `ausland`, `wirtschaft`, `sport`, `people`, `lifestyle`, `wissen`, `wetter`, `regionen`, `community`, `faktenchecks` |
+| `SKIP_CATEGORIES` | *(empty)* | Categories to skip, comma-separated — e.g. `sport` skips all sport news. Categories come from each source's feed (the hashtag on posted messages), or from a source's `default_category` in `sources.json` |
 | `INCLUDE_CATEGORIES` | *(empty)* | Post **only** these categories (same format). When set, `SKIP_CATEGORIES` is ignored |
 | `POLL_INTERVAL_MINUTES` | `30` | How often to check for news |
 | `MAX_POSTS_PER_CYCLE` | `5` | Max posts per check (extras are queued) |
