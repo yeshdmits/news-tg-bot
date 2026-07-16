@@ -61,12 +61,13 @@ Each source entry:
 | `url_base` | no | Prefixed onto extracted URLs that start with `/` |
 | `namespaces` | xml only | XML namespace prefixes used in mapping paths, e.g. `{"media": "http://search.yahoo.com/mrss/"}` |
 
-The `mapping` object (`items`, `id`, `title`, `url` required; `lead`, `image`, `published`, `category`, `id_pattern` optional):
+The `mapping` object (`items`, `id`, `title`, `url` required; `lead`, `lead_html`, `image`, `published`, `category`, `id_pattern` optional):
 
 - **json**: dot-separated key paths (`image.variants.big.src`), `items` pointing at the article array. `image` may be a list of paths — first non-empty wins.
 - **xml**: ElementTree paths — `items` relative to the document root (`channel/item`), the rest relative to an item. An `@attr` suffix reads an attribute (`media:thumbnail@url`).
 - `id`: the field whose value makes a record **unique** — it is the dedup key (stored as `<name>:<value>`), so pick something stable per article: a content id, an RSS `guid`, or the article URL. Items sharing an id are posted once.
 - `id_pattern`: optional regex applied to the extracted id value; the first capture group (or the whole match if there is no group) becomes the unique key. Useful to cut a stable token out of a long guid URL, e.g. `"id": "guid"` + `"id_pattern": "articles/([a-z0-9]+)"` turns `https://www.bbc.co.uk/news/articles/c36dnz1zez5o#0` into `c36dnz1zez5o`. If the regex doesn't match, the full value is used. Changing `id` or `id_pattern` on a live source changes its stored keys — recent articles may be re-posted once.
+- `lead_html`: set `true` when the lead field contains HTML markup (common in RSS `description`/`content:encoded`) — tags are stripped and entities unescaped before the text is used.
 - `published_format`: `iso8601` (default) or `rfc822` (RSS `pubDate`).
 
 Extracted categories are normalized to hashtag form (`sport/wm-2026` → `sport_wm_2026`). Items missing id, title, or url are skipped individually; a payload failing schema validation skips the **whole source** for that cycle (a schema mismatch means the feed changed shape — check the logs).

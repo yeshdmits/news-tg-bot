@@ -44,6 +44,27 @@
       }
     },
     {
+      "name": "guardian-world",
+      "type": "xml",
+      "url": "https://www.theguardian.com/world/rss",
+      "language": "en",
+      "category": "guardian_world",
+      "namespaces": {"media": "http://search.yahoo.com/mrss/"},
+      "schema_file": "schemas/guardian-world.xsd",
+      "mapping": {
+        "items": "channel/item",
+        "id": "guid",
+        "title": "title",
+        "lead": "description",
+        "lead_html": true,
+        "url": "link",
+        "image": ["media:content[@width='700']@url", "media:content@url"],
+        "published": "pubDate",
+        "published_format": "rfc822",
+        "category": "category"
+      }
+    },
+    {
       "name": "npr-news",
       "type": "xml",
       "url": "https://feeds.npr.org/1001/rss.xml",

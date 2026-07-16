@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import html
 import logging
+import re
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from email.utils import parsedate_to_datetime
@@ -12,7 +14,7 @@ import jsonschema
 import xmlschema
 
 from .models import Article
-from .sources import SourceSpec
+from .sources import SourceSpec, category_hashtag
 
 logger = logging.getLogger(__name__)
 
@@ -35,12 +37,12 @@ def _parse_date(raw: object, fmt: str) -> datetime | None:
         return None
 
 
-def _category_hashtag(path: object) -> str | None:
-    """'sport/wm-2026-in-usa' -> 'sport_wm_2026_in_usa'"""
-    if not path or not isinstance(path, str):
-        return None
-    tag = path.strip("/").replace("/", "_").replace("-", "_")
-    return tag or None
+def _strip_html(text: str) -> str:
+    """Reduce HTML markup to plain text: drop tags, unescape entities,
+    collapse whitespace."""
+    text = re.sub(r"<[^>]*>", " ", text)
+    text = html.unescape(text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def _json_path(obj: object, path: str) -> object:
@@ -53,10 +55,14 @@ def _json_path(obj: object, path: str) -> object:
 
 
 def _xml_value(element: ET.Element, path: str, namespaces: dict[str, str]) -> str | None:
-    """Element text by path; an '@attr' suffix reads an attribute instead."""
-    if "@" in path:
-        elem_path, _, attr = path.rpartition("@")
-        target = element.find(elem_path, namespaces) if elem_path else element
+    """Element text by path; an '@attr' suffix reads an attribute instead.
+
+    A trailing '@attr' must come after any [] predicate, so an '@' inside a
+    predicate (e.g. "category[@domain='x']") is not mistaken for a suffix.
+    """
+    elem_path, sep, attr = path.rpartition("@")
+    if sep and "]" not in attr and "/" not in attr:
+        target = element.find(elem_path.rstrip("/"), namespaces) if elem_path else element
         value = target.get(attr) if target is not None else None
         return value.strip() or None if value else None
     text = element.findtext(path, default="", namespaces=namespaces)
@@ -79,6 +85,9 @@ def _build_article(
         return None
     if url.startswith("/") and spec.url_base:
         url = spec.url_base + url
+    lead = (lead or "").strip()
+    if lead and spec.mapping.lead_html:
+        lead = _strip_html(lead)
     unique_id = str(raw_id)
     if spec.mapping.id_pattern:
         match = spec.mapping.id_pattern.search(unique_id)
@@ -87,11 +96,11 @@ def _build_article(
     return Article(
         content_id=f"{spec.name}:{unique_id}",
         title=title,
-        lead=(lead or "").strip(),
+        lead=lead,
         url=url,
         image_url=image_url or None,
         published_at=_parse_date(published_raw, spec.mapping.published_format),
-        category=_category_hashtag(category_raw) or spec.category,
+        category=category_hashtag(category_raw) or spec.category,
         language=spec.language,
     )
 

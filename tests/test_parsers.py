@@ -192,6 +192,58 @@ def test_parse_bbc_rejects_malformed_xml(bbc):
         parse_xml_payload("<rss><channel></rss>", bbc)
 
 
+GUARDIAN_FEED = """<?xml version="1.0" encoding="UTF-8"?>
+<rss xmlns:media="http://search.yahoo.com/mrss/"
+     xmlns:dc="http://purl.org/dc/elements/1.1/" version="2.0">
+<channel>
+<title>World news | The Guardian</title>
+<link>https://www.theguardian.com/world</link>
+<item>
+<title>Uganda calls for travel restrictions to be lifted</title>
+<link>https://www.theguardian.com/global-development/2026/jul/16/uganda-ebola</link>
+<description>&lt;p&gt;Country begins 42-day countdown&lt;/p&gt;</description>
+<category domain="https://www.theguardian.com/global-development/global-health">Global health</category>
+<category domain="https://www.theguardian.com/world/ebola">Ebola</category>
+<pubDate>Thu, 16 Jul 2026 11:33:27 GMT</pubDate>
+<guid>https://www.theguardian.com/global-development/2026/jul/16/uganda-ebola</guid>
+<media:content width="140" url="https://i.guim.co.uk/img/140.jpg">
+<media:credit scheme="urn:ebu">Photograph: Reuters</media:credit>
+</media:content>
+<media:content width="700" url="https://i.guim.co.uk/img/700.jpg">
+<media:credit scheme="urn:ebu">Photograph: Reuters</media:credit>
+</media:content>
+<dc:creator>John Musenze in Kampala</dc:creator>
+</item>
+<item>
+<title>Story without categories or images</title>
+<link>https://www.theguardian.com/world/2026/jul/16/second</link>
+<pubDate>Thu, 16 Jul 2026 10:00:00 GMT</pubDate>
+<guid>https://www.theguardian.com/world/2026/jul/16/second</guid>
+</item>
+</channel>
+</rss>
+"""
+
+
+def test_parse_guardian_feed(specs):
+    guardian = specs["guardian-world"]
+    articles = parse_xml_payload(GUARDIAN_FEED, guardian)
+    assert len(articles) == 2
+
+    first = articles[0]
+    # [@width='700'] predicate picks the big rendition, not the first one.
+    assert first.image_url == "https://i.guim.co.uk/img/700.jpg"
+    # Feed category text with spaces becomes a clean hashtag.
+    assert first.category == "global_health"
+    assert first.language == "en"
+    # lead_html strips the markup from the HTML description.
+    assert first.lead == "Country begins 42-day countdown"
+
+    second = articles[1]
+    assert second.image_url is None
+    assert second.category == "guardian_world"
+
+
 def test_id_pattern_extracts_unique_key(bbc):
     import dataclasses
     import re

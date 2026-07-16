@@ -26,6 +26,17 @@ PUBLISHED_FORMATS = ("iso8601", "rfc822")
 _REQUIRED_MAPPING_KEYS = ("items", "id", "title", "url")
 
 
+def category_hashtag(value: object) -> str | None:
+    """Normalize any category text to Telegram hashtag form.
+
+    'sport/wm-2026-in-usa' -> 'sport_wm_2026_in_usa', 'Global health' -> 'global_health'
+    """
+    if not value or not isinstance(value, str):
+        return None
+    tag = re.sub(r"[^\w]+", "_", value.strip().lower()).strip("_")
+    return tag or None
+
+
 @dataclass(frozen=True)
 class FieldMapping:
     """Where to find Article fields inside a fetched payload.
@@ -41,6 +52,9 @@ class FieldMapping:
     title: str
     url: str
     lead: str | None = None
+    # True when the lead field contains HTML markup: tags are stripped and
+    # entities unescaped before the text is used.
+    lead_html: bool = False
     image: tuple[str, ...] = ()
     published: str | None = None
     published_format: str = "iso8601"
@@ -109,12 +123,17 @@ def _parse_mapping(raw: dict, where: str) -> FieldMapping:
         except re.error as exc:
             raise ConfigError(f"{where}.mapping: invalid 'id_pattern' regex: {exc}") from exc
 
+    lead_html = mapping.get("lead_html", False)
+    if not isinstance(lead_html, bool):
+        raise ConfigError(f"{where}.mapping: 'lead_html' must be a boolean")
+
     return FieldMapping(
         items=mapping["items"].strip(),
         id=mapping["id"].strip(),
         title=mapping["title"].strip(),
         url=mapping["url"].strip(),
         lead=mapping.get("lead") or None,
+        lead_html=lead_html,
         image=image_paths,
         published=mapping.get("published") or None,
         published_format=published_format,
@@ -168,8 +187,9 @@ def _parse_source(raw: object, base_dir: Path, where: str) -> SourceSpec:
         except (OSError, xmlschema.XMLSchemaException) as exc:
             raise ConfigError(f"{where}: cannot load XSD {schema_path}: {exc}") from exc
 
-    category = _require_str(raw, "category", where)
-    category = category.strip("/").lower().replace("/", "_").replace("-", "_")
+    category = category_hashtag(_require_str(raw, "category", where))
+    if not category:
+        raise ConfigError(f"{where}: 'category' normalizes to an empty hashtag")
 
     return SourceSpec(
         name=name,
