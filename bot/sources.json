@@ -63,24 +63,6 @@
       }
     },
     {
-      "name": "npr-news",
-      "type": "xml",
-      "url": "https://feeds.npr.org/1001/rss.xml",
-      "language": "en",
-      "channel": "english",
-      "category": "npr_news",
-      "schema_file": "schemas/npr-news.xsd",
-      "mapping": {
-        "items": "channel/item",
-        "id": "guid",
-        "title": "title",
-        "lead": "description",
-        "url": "link",
-        "published": "pubDate",
-        "published_format": "rfc822"
-      }
-    },
-    {
       "name": "bbc-world",
       "type": "xml",
       "url": "https://feeds.bbci.co.uk/news/world/rss.xml",
