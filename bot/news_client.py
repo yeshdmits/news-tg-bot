@@ -88,6 +88,10 @@ def _build_article(
     lead = (lead or "").strip()
     if lead and spec.mapping.lead_html:
         lead = _strip_html(lead)
+    if lead and spec.mapping.lead_remove:
+        for pattern in spec.mapping.lead_remove:
+            lead = pattern.sub("", lead)
+        lead = re.sub(r"\s+", " ", lead).strip()
     unique_id = str(raw_id)
     if spec.mapping.id_pattern:
         match = spec.mapping.id_pattern.search(unique_id)
@@ -101,6 +105,7 @@ def _build_article(
         image_url=image_url or None,
         published_at=_parse_date(published_raw, spec.mapping.published_format),
         category=category_hashtag(category_raw) or spec.category,
+        channel=spec.channel,
         language=spec.language,
     )
 

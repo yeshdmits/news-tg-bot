@@ -1,12 +1,14 @@
 """Parser tests for the generic news client, using inline payload fixtures."""
 
+from pathlib import Path
+
 import pytest
 
 from bot.config import ConfigError
 from bot.news_client import FeedValidationError, parse_json_payload, parse_xml_payload
 from bot.sources import load_sources
 
-SOURCES_FILE = "bot/sources.json"
+SOURCES_FILE = str(Path(__file__).parent.parent / "bot" / "sources.json")
 
 
 @pytest.fixture(scope="module")
@@ -14,9 +16,44 @@ def specs():
     return {spec.name: spec for spec in load_sources(SOURCES_FILE)}
 
 
+# A standalone JSON-type source (the shipped sources.json is all-XML) to keep
+# the JSON parser path covered: dot-paths, image fallback list, url_base,
+# queries, and inline JSON Schema validation.
+JSON_SOURCE = {
+    "name": "json-demo",
+    "type": "json",
+    "url": "https://example.com/api/news",
+    "queries": [{"limit": "{limit}", "timeFrame": "1h"}],
+    "language": "de",
+    "channel": "german",
+    "category": "demo",
+    "url_base": "https://example.com",
+    "schema": {
+        "type": "object",
+        "required": ["items"],
+        "properties": {"items": {"type": "array", "items": {"type": "object"}}},
+    },
+    "mapping": {
+        "items": "items",
+        "id": "contentId",
+        "title": "title",
+        "lead": "lead",
+        "url": "url",
+        "image": ["image.variants.big.src", "image.variants.small.src"],
+        "published": "publishedAt",
+        "published_format": "iso8601",
+        "category": "mainCategoryFullUrlPath",
+    },
+}
+
+
 @pytest.fixture(scope="module")
-def twenty_min(specs):
-    return specs["20min"]
+def json_spec(tmp_path_factory):
+    import json
+
+    file = tmp_path_factory.mktemp("sources") / "sources.json"
+    file.write_text(json.dumps({"sources": [JSON_SOURCE]}))
+    return load_sources(str(file))[0]
 
 
 @pytest.fixture(scope="module")
@@ -33,6 +70,7 @@ def test_default_sources_file_loads(specs):
     for spec in specs.values():
         assert spec.type in ("json", "xml")
         assert spec.language
+        assert spec.channel
         assert spec.queries
         if spec.type == "json":
             assert spec.json_schema is not None
@@ -53,6 +91,7 @@ def test_load_sources_requires_category(tmp_path):
         "type": "json",
         "url": "https://example.com/feed.json",
         "language": "en",
+        "channel": "english",
         "schema": {"type": "object"},
         "mapping": {"items": "items", "id": "id", "title": "title", "url": "url"},
     }
@@ -66,7 +105,7 @@ def test_load_sources_requires_category(tmp_path):
     assert load_sources(str(file))[0].category == "acme_top_news"
 
 
-TWENTY_MIN_PAYLOAD = {
+JSON_PAYLOAD = {
     "items": [
         {
             "contentId": 123,
@@ -81,7 +120,7 @@ TWENTY_MIN_PAYLOAD = {
             "contentId": 456,
             "title": "Titel zwei",
             "lead": "",
-            "url": "https://www.20min.ch/story/456",
+            "url": "https://example.com/story/456",
             "publishedAt": "2026-07-16T09:00:00Z",
             "image": {"variants": {"small": {"src": "https://img/small.jpg"}}},
         },
@@ -94,30 +133,31 @@ TWENTY_MIN_PAYLOAD = {
 }
 
 
-def test_parse_20min_payload(twenty_min):
-    articles = parse_json_payload(TWENTY_MIN_PAYLOAD, twenty_min)
-    assert [a.content_id for a in articles] == ["20min:123", "20min:456"]
+def test_parse_json_payload(json_spec):
+    articles = parse_json_payload(JSON_PAYLOAD, json_spec)
+    assert [a.content_id for a in articles] == ["json-demo:123", "json-demo:456"]
 
     first = articles[0]
     assert first.title == "Titel eins"
-    assert first.url == "https://www.20min.ch/story/titel-eins-123"
+    assert first.url == "https://example.com/story/titel-eins-123"
     assert first.image_url == "https://img/big.jpg"
     assert first.category == "sport_wm_2026_in_usa"
     assert first.language == "de"
-    assert first.source == "20min"
+    assert first.channel == "german"
+    assert first.source == "json-demo"
     assert first.published_at is not None
     assert first.published_at.isoformat() == "2026-07-16T10:00:00+00:00"
 
     second = articles[1]
     assert second.image_url == "https://img/small.jpg"
-    assert second.url == "https://www.20min.ch/story/456"
+    assert second.url == "https://example.com/story/456"
     # No category in the feed item -> the source's required category.
-    assert second.category == "20min"
+    assert second.category == "demo"
 
 
-def test_parse_20min_rejects_wrong_shape(twenty_min):
+def test_parse_json_rejects_wrong_shape(json_spec):
     with pytest.raises(FeedValidationError):
-        parse_json_payload({"items": "not-a-list"}, twenty_min)
+        parse_json_payload({"items": "not-a-list"}, json_spec)
 
 
 BBC_FEED = """<?xml version="1.0" encoding="UTF-8"?>
@@ -201,7 +241,7 @@ GUARDIAN_FEED = """<?xml version="1.0" encoding="UTF-8"?>
 <item>
 <title>Uganda calls for travel restrictions to be lifted</title>
 <link>https://www.theguardian.com/global-development/2026/jul/16/uganda-ebola</link>
-<description>&lt;p&gt;Country begins 42-day countdown&lt;/p&gt;</description>
+<description>&lt;p&gt;Country begins 42-day countdown&lt;/p&gt; &lt;a href="https://www.theguardian.com/x"&gt;Continue reading...&lt;/a&gt;</description>
 <category domain="https://www.theguardian.com/global-development/global-health">Global health</category>
 <category domain="https://www.theguardian.com/world/ebola">Ebola</category>
 <pubDate>Thu, 16 Jul 2026 11:33:27 GMT</pubDate>
@@ -236,7 +276,8 @@ def test_parse_guardian_feed(specs):
     # Feed category text with spaces becomes a clean hashtag.
     assert first.category == "global_health"
     assert first.language == "en"
-    # lead_html strips the markup from the HTML description.
+    assert first.channel == "english"
+    # lead_html strips the markup; lead_remove drops the trailing boilerplate.
     assert first.lead == "Country begins 42-day countdown"
 
     second = articles[1]

@@ -39,12 +39,10 @@ class TelegramSender:
     def __init__(
         self,
         bot_token: str,
-        channel_id: str,
         with_image: bool = True,
         full_text: bool = True,
     ) -> None:
         self._api_base = f"https://api.telegram.org/bot{bot_token}"
-        self._channel_id = channel_id
         self._with_image = with_image
         self._full_text = full_text
         self._client = httpx.AsyncClient(timeout=30.0)
@@ -84,12 +82,12 @@ class TelegramSender:
             return False
         return False
 
-    async def send_article(self, article: Article) -> bool:
+    async def send_article(self, article: Article, chat_id: str) -> bool:
         if self._with_image and article.image_url:
             ok = await self._call(
                 "sendPhoto",
                 {
-                    "chat_id": self._channel_id,
+                    "chat_id": chat_id,
                     "photo": article.image_url,
                     "caption": build_caption(article, include_lead=self._full_text),
                     "parse_mode": "HTML",
@@ -109,7 +107,7 @@ class TelegramSender:
         return await self._call(
             "sendMessage",
             {
-                "chat_id": self._channel_id,
+                "chat_id": chat_id,
                 "text": build_caption(
                     article, limit=TEXT_LIMIT, include_lead=self._full_text
                 ),

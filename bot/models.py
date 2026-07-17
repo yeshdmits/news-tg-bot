@@ -15,6 +15,9 @@ class Article:
     image_url: str | None
     published_at: datetime | None
     category: str
+    # Channel key from the source definition; resolved to a Telegram chat id
+    # via <KEY>_TELEGRAM_CHANNEL_ID.
+    channel: str = ""
     language: str = "de"
     title_en: str | None = None
     lead_en: str | None = None

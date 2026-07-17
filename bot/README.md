@@ -4,12 +4,17 @@ User-facing setup instructions are in the [root README](../README.md). This docu
 
 ## How It Works
 
-The bot polls every news source defined in `sources.json` (see [News Sources](#news-sources)) on a fixed interval (default: every 30 minutes). Each cycle:
+The bot splits the news sources defined in `sources.json` (see [News Sources](#news-sources)) into two independent posting queues, each on its own interval:
+
+- **english** — sources with `"language": "en"`, posted without translation (default: every 15 minutes, `EN_POST_INTERVAL_MINUTES`)
+- **translated** — every other language, translated via DeepL before posting (default: every 60 minutes, `TRANSLATED_POST_INTERVAL_MINUTES`)
+
+Each queue tick:
 
 1. **Fetches** every source (one GET per configured query), validates the payload against the source's schema, maps it to articles via the source's field mapping, and merges all sources chronologically.
 2. **Filters** out articles in skipped categories (`SKIP_CATEGORIES`) and articles already posted, using a local SQLite database.
 3. **Translates** title and lead to English via DeepL (`EN-US`), using the source's language — sources already in English are not translated at all. Translations are cached in SQLite so a failed Telegram send never re-spends DeepL quota on retry.
-4. **Posts** each new article to the channel via `sendPhoto` (falling back to `sendMessage` with a link preview if the image is missing or rejected), oldest first, with a 2-second delay between posts.
+4. **Posts** each new article via `sendPhoto` (falling back to `sendMessage` with a link preview if the image is missing or rejected), oldest first, with a 2-second delay between posts. The target channel is the source's `channel` key, resolved through the `<KEY>_TELEGRAM_CHANNEL_ID` env variable (e.g. `"channel": "german"` → `GERMAN_TELEGRAM_CHANNEL_ID`), with `TELEGRAM_CHANNEL_ID` as the fallback.
 
 ```
 ┌──────────────┐    fetch     ┌──────────────┐   translate   ┌─────────┐
@@ -52,7 +57,8 @@ Each source entry:
 | `name` | yes | Unique id, `[a-z0-9_-]+`. Becomes the prefix of stored article ids (`<name>:<feed id>`) — **don't rename a source later**, or its posted-history is orphaned and old articles may be re-posted |
 | `type` | yes | `json` or `xml` |
 | `url` | yes | Feed URL |
-| `language` | yes | Source language (DeepL code, e.g. `de`, `fr`). **`en` disables translation entirely** for this source |
+| `language` | yes | Original language of the news (DeepL code, e.g. `de`, `fr`). **`en` disables translation entirely** for this source and puts it on the fast posting queue |
+| `channel` | yes | Outcome channel key, `[a-z0-9_]+`. Posts go to the Telegram channel configured in the `<KEY>_TELEGRAM_CHANNEL_ID` env variable (`"german"` → `GERMAN_TELEGRAM_CHANNEL_ID`). Any number of sources can share a channel |
 | `category` | yes | The `#hashtag` posted with this source's messages (normalized: lowercase, `/` and `-` → `_`). Used when the feed item carries no category of its own via `mapping.category`, and by the `INCLUDE_CATEGORIES`/`SKIP_CATEGORIES` filters |
 | `schema` | json only | Inline JSON Schema the fetched payload must satisfy. Keep it simple — require only the shape the mapping needs |
 | `schema_file` | xml only | Path to an XSD, relative to the sources file. Keep it lax (`processContents="lax"`/`skip`) — constrain only the elements the mapping reads |
@@ -61,13 +67,14 @@ Each source entry:
 | `url_base` | no | Prefixed onto extracted URLs that start with `/` |
 | `namespaces` | xml only | XML namespace prefixes used in mapping paths, e.g. `{"media": "http://search.yahoo.com/mrss/"}` |
 
-The `mapping` object (`items`, `id`, `title`, `url` required; `lead`, `lead_html`, `image`, `published`, `category`, `id_pattern` optional):
+The `mapping` object (`items`, `id`, `title`, `url` required; `lead`, `lead_html`, `lead_remove`, `image`, `published`, `category`, `id_pattern` optional):
 
 - **json**: dot-separated key paths (`image.variants.big.src`), `items` pointing at the article array. `image` may be a list of paths — first non-empty wins.
 - **xml**: ElementTree paths — `items` relative to the document root (`channel/item`), the rest relative to an item. An `@attr` suffix reads an attribute (`media:thumbnail@url`).
 - `id`: the field whose value makes a record **unique** — it is the dedup key (stored as `<name>:<value>`), so pick something stable per article: a content id, an RSS `guid`, or the article URL. Items sharing an id are posted once.
 - `id_pattern`: optional regex applied to the extracted id value; the first capture group (or the whole match if there is no group) becomes the unique key. Useful to cut a stable token out of a long guid URL, e.g. `"id": "guid"` + `"id_pattern": "articles/([a-z0-9]+)"` turns `https://www.bbc.co.uk/news/articles/c36dnz1zez5o#0` into `c36dnz1zez5o`. If the regex doesn't match, the full value is used. Changing `id` or `id_pattern` on a live source changes its stored keys — recent articles may be re-posted once.
 - `lead_html`: set `true` when the lead field contains HTML markup (common in RSS `description`/`content:encoded`) — tags are stripped and entities unescaped before the text is used.
+- `lead_remove`: regex (or list of regexes) deleted from the lead after extraction — for feed boilerplate, e.g. `"Continue reading\\.{3}\\s*$"` removes a trailing "Continue reading...".
 - `published_format`: `iso8601` (default) or `rfc822` (RSS `pubDate`).
 
 Extracted categories are normalized to hashtag form (`sport/wm-2026` → `sport_wm_2026`). Items missing id, title, or url are skipped individually; a payload failing schema validation skips the **whole source** for that cycle (a schema mismatch means the feed changed shape — check the logs).
@@ -81,15 +88,17 @@ All configuration is via environment variables (or `.env` for Docker Compose). T
 | Variable | Default | Description |
 |---|---|---|
 | `TELEGRAM_BOT_TOKEN` | *required* | Bot token from @BotFather |
-| `TELEGRAM_CHANNEL_ID` | *required* | `@handle` or numeric `-100...` id; bot must be a channel admin |
+| `<KEY>_TELEGRAM_CHANNEL_ID` | *required per channel key* | Channel for sources with `"channel": "<key>"` in `sources.json` (default file uses `GERMAN_TELEGRAM_CHANNEL_ID` and `ENGLISH_TELEGRAM_CHANNEL_ID`). `@handle` or numeric `-100...` id; bot must be a channel admin. Startup fails if a source's channel key has no variable |
+| `TELEGRAM_CHANNEL_ID` | *(empty)* | Fallback channel for keys without a dedicated `<KEY>_` variable |
 | `DEEPL_API_KEY` | *required* | DeepL API authentication key |
-| `POLL_INTERVAL_MINUTES` | `30` | Minutes between polling cycles |
+| `EN_POST_INTERVAL_MINUTES` | `15` | Minutes between ticks of the english queue (untranslated sources) |
+| `TRANSLATED_POST_INTERVAL_MINUTES` | `60` | Minutes between ticks of the translated queue |
 | `NEWS_FETCH_LIMIT` | `10` | Max articles kept per source and per cycle; also substituted for `"{limit}"` in source query params |
 | `SOURCES_PATH` | `bot/sources.json` | News source definitions file (see [News Sources](#news-sources)) |
 | `DB_PATH` | `data/posted.db` | SQLite database location (directory is auto-created; `/app/data/posted.db` in Docker) |
 | `TRANSLATE_LEAD` | `true` | Also translate the lead paragraph. `false` = titles only (~4× less DeepL usage) |
 | `LEAD_MAX_CHARS` | `300` | Leads are truncated to this length *before* translation (video items carry very long transcript leads) |
-| `MAX_POSTS_PER_CYCLE` | `5` | Cap on posts per cycle; excess articles are queued for the next cycle |
+| `MAX_POSTS_PER_CYCLE` | `5` | Cap on posts per queue tick; excess articles are queued for the next tick |
 | `SKIP_INITIAL_BACKLOG` | `true` | On a source's first run (no posts from it yet), mark its current articles as seen instead of flooding the channel |
 | `SKIP_CATEGORIES` | *(empty)* | Comma-separated category paths to exclude, matched by prefix: `sport` skips `sport` and every subcategory like `sport/wm-2026-in-usa`. Entries are normalized (lowercase, `/` and `-` → `_`), so URL-path and hashtag forms both work. Ignored when `INCLUDE_CATEGORIES` is set |
 | `INCLUDE_CATEGORIES` | *(empty)* | Comma-separated category paths to post exclusively (same format and prefix matching). When set, only matching articles are posted and `SKIP_CATEGORIES` is ignored |

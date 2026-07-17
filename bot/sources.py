@@ -20,6 +20,8 @@ from .config import ConfigError
 # Source names end up as the "name:" prefix of content ids and in SQL LIKE
 # patterns, so keep them to a safe charset.
 _NAME_RE = re.compile(r"^[a-z0-9_-]+$")
+# Channel keys become <KEY>_TELEGRAM_CHANNEL_ID env var names.
+_CHANNEL_KEY_RE = re.compile(r"^[a-z0-9_]+$")
 
 SOURCE_TYPES = ("json", "xml")
 PUBLISHED_FORMATS = ("iso8601", "rfc822")
@@ -55,6 +57,9 @@ class FieldMapping:
     # True when the lead field contains HTML markup: tags are stripped and
     # entities unescaped before the text is used.
     lead_html: bool = False
+    # Regexes removed from the extracted lead (after HTML stripping) — for
+    # feed boilerplate like a trailing "Continue reading...".
+    lead_remove: tuple[re.Pattern[str], ...] = ()
     image: tuple[str, ...] = ()
     published: str | None = None
     published_format: str = "iso8601"
@@ -70,7 +75,11 @@ class SourceSpec:
     name: str
     type: str
     url: str
+    # Original language of the news; drives translation ("en" is posted
+    # as-is, anything else is translated via DeepL).
     language: str
+    # Outcome channel key; posts go to the <KEY>_TELEGRAM_CHANNEL_ID channel.
+    channel: str
     # The hashtag posted to Telegram when the feed item carries no category
     # of its own (via mapping.category).
     category: str
@@ -127,6 +136,18 @@ def _parse_mapping(raw: dict, where: str) -> FieldMapping:
     if not isinstance(lead_html, bool):
         raise ConfigError(f"{where}.mapping: 'lead_html' must be a boolean")
 
+    raw_removes = mapping.get("lead_remove", [])
+    if isinstance(raw_removes, str):
+        raw_removes = [raw_removes]
+    if not isinstance(raw_removes, list) or not all(isinstance(p, str) for p in raw_removes):
+        raise ConfigError(f"{where}.mapping: 'lead_remove' must be a string or list of strings")
+    lead_remove = []
+    for raw in raw_removes:
+        try:
+            lead_remove.append(re.compile(raw))
+        except re.error as exc:
+            raise ConfigError(f"{where}.mapping: invalid 'lead_remove' regex {raw!r}: {exc}") from exc
+
     return FieldMapping(
         items=mapping["items"].strip(),
         id=mapping["id"].strip(),
@@ -134,6 +155,7 @@ def _parse_mapping(raw: dict, where: str) -> FieldMapping:
         url=mapping["url"].strip(),
         lead=mapping.get("lead") or None,
         lead_html=lead_html,
+        lead_remove=tuple(lead_remove),
         image=image_paths,
         published=mapping.get("published") or None,
         published_format=published_format,
@@ -191,11 +213,16 @@ def _parse_source(raw: object, base_dir: Path, where: str) -> SourceSpec:
     if not category:
         raise ConfigError(f"{where}: 'category' normalizes to an empty hashtag")
 
+    channel = _require_str(raw, "channel", where).lower()
+    if not _CHANNEL_KEY_RE.match(channel):
+        raise ConfigError(f"{where}: 'channel' must match [a-z0-9_]+, got {channel!r}")
+
     return SourceSpec(
         name=name,
         type=source_type,
         url=_require_str(raw, "url", where),
         language=_require_str(raw, "language", where).lower(),
+        channel=channel,
         category=category,
         mapping=_parse_mapping(raw, where),
         queries=_parse_queries(raw, where),

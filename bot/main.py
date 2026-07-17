@@ -70,6 +70,7 @@ async def run_cycle(
     translator: Translator,
     sender: TelegramSender,
     storage: Storage,
+    queue: str = "news",
 ) -> None:
     articles: list[Article] = []
     for spec in specs:
@@ -83,7 +84,7 @@ async def run_cycle(
             continue
         articles.extend(fetched)
     if not articles:
-        logger.warning("No articles fetched this cycle")
+        logger.warning("Queue %s: no articles fetched this cycle", queue)
         return
 
     # Merge sources chronologically, newest first.
@@ -105,26 +106,40 @@ async def run_cycle(
         articles = kept
 
     new_articles = [a for a in articles if not storage.is_posted(a.content_id)]
-    logger.info("Fetched %d articles, %d new", len(articles), len(new_articles))
+    logger.info(
+        "Queue %s: fetched %d articles, %d new", queue, len(articles), len(new_articles)
+    )
 
     if new_articles and config.skip_initial_backlog:
         new_articles = _skip_backlog_for_new_sources(storage, new_articles)
 
     if len(new_articles) > config.max_posts_per_cycle:
         logger.info(
-            "Capping posts to %d this cycle (%d queued for later)",
+            "Queue %s: capping posts to %d this cycle (%d queued for later)",
+            queue,
             config.max_posts_per_cycle,
             len(new_articles) - config.max_posts_per_cycle,
         )
         new_articles = new_articles[: config.max_posts_per_cycle]
 
-    # Post oldest first so the channel reads chronologically.
+    needs_deepl = any(a.language != "en" for a in new_articles)
+
+    # Post oldest first so the channels read chronologically.
     for article in reversed(new_articles):
         try:
             await _translate(translator, storage, article)
         except Exception:
             logger.exception("Unexpected translation error for %s", article.content_id)
-        if await sender.send_article(article):
+        chat_id = config.channel_for(article.channel)
+        if chat_id is None:
+            # Guarded at startup; only reachable if sources changed mid-run.
+            logger.error(
+                "No channel configured for key %r, skipping %s",
+                article.channel,
+                article.content_id,
+            )
+            continue
+        if await sender.send_article(article, chat_id):
             storage.mark_posted(article.content_id, article.title)
             logger.info("Posted %s: %s", article.content_id, article.display_title)
         else:
@@ -133,8 +148,37 @@ async def run_cycle(
             )
         await asyncio.sleep(POST_DELAY_SECONDS)
 
-    await asyncio.to_thread(translator.log_usage)
+    if needs_deepl:
+        await asyncio.to_thread(translator.log_usage)
     storage.cleanup_old(days=30)
+
+
+async def _run_queue(
+    config: Config,
+    queue: str,
+    specs: list[SourceSpec],
+    interval_minutes: int,
+    news: NewsClient,
+    translator: Translator,
+    sender: TelegramSender,
+    storage: Storage,
+    stop: asyncio.Event,
+) -> None:
+    logger.info(
+        "Queue %s: %s — posting every %d min",
+        queue,
+        ", ".join(spec.name for spec in specs),
+        interval_minutes,
+    )
+    while not stop.is_set():
+        try:
+            await run_cycle(config, specs, news, translator, sender, storage, queue)
+        except Exception:
+            logger.exception("Queue %s: cycle failed, retrying next interval", queue)
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=interval_minutes * 60)
+        except asyncio.TimeoutError:
+            pass
 
 
 async def run(config: Config, specs: list[SourceSpec]) -> None:
@@ -148,7 +192,6 @@ async def run(config: Config, specs: list[SourceSpec]) -> None:
     )
     sender = TelegramSender(
         config.telegram_bot_token,
-        config.telegram_channel_id,
         with_image=config.post_with_image,
         full_text=config.post_full_text,
     )
@@ -170,27 +213,34 @@ async def run(config: Config, specs: list[SourceSpec]) -> None:
     else:
         category_filter = "all categories"
     logger.info(
-        "Bot started: sources: %s, polling every %d min, translate_lead=%s, "
-        "max %d posts/cycle, style=%s, categories: %s",
+        "Bot started: sources: %s, translate_lead=%s, max %d posts/cycle, "
+        "style=%s, categories: %s",
         ", ".join(spec.name for spec in specs),
-        config.poll_interval_minutes,
         config.translate_lead,
         config.max_posts_per_cycle,
         config.post_style,
         category_filter,
     )
+
+    en_specs = [s for s in specs if s.language == "en"]
+    translated_specs = [s for s in specs if s.language != "en"]
+    queues = []
+    if en_specs:
+        queues.append(("english", en_specs, config.en_post_interval_minutes))
+    if translated_specs:
+        queues.append(
+            ("translated", translated_specs, config.translated_post_interval_minutes)
+        )
     try:
-        while not stop.is_set():
-            try:
-                await run_cycle(config, specs, news, translator, sender, storage)
-            except Exception:
-                logger.exception("Cycle failed, retrying next interval")
-            try:
-                await asyncio.wait_for(
-                    stop.wait(), timeout=config.poll_interval_minutes * 60
+        await asyncio.gather(
+            *(
+                _run_queue(
+                    config, queue, queue_specs, interval,
+                    news, translator, sender, storage, stop,
                 )
-            except asyncio.TimeoutError:
-                pass
+                for queue, queue_specs, interval in queues
+            )
+        )
     finally:
         logger.info("Shutting down")
         await news.close()
@@ -206,6 +256,17 @@ def main() -> None:
     try:
         config = Config.from_env()
         specs = load_sources(config.sources_path)
+        missing = sorted(
+            {s.channel for s in specs if config.channel_for(s.channel) is None}
+        )
+        if missing:
+            raise ConfigError(
+                "No Telegram channel configured for channel key(s): "
+                + ", ".join(missing)
+                + " — set "
+                + " / ".join(f"{key.upper()}_TELEGRAM_CHANNEL_ID" for key in missing)
+                + " (or TELEGRAM_CHANNEL_ID as a fallback for all channels)"
+            )
     except ConfigError as exc:
         raise SystemExit(f"Configuration error: {exc}") from exc
     asyncio.run(run(config, specs))

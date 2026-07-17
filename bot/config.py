@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, field
 
 
 class ConfigError(RuntimeError):
@@ -66,13 +67,34 @@ def _get_post_style(name: str, default: str) -> str:
     return raw
 
 
+_CHANNEL_VAR_RE = re.compile(r"^([A-Z0-9_]{2,32})_TELEGRAM_CHANNEL_ID$")
+
+
+def _get_channel_ids() -> dict[str, str]:
+    """Channel ids from <KEY>_TELEGRAM_CHANNEL_ID variables, keyed by the
+    lowercased KEY — matched against each source's 'channel' in sources.json."""
+    channels = {}
+    for name, value in os.environ.items():
+        match = _CHANNEL_VAR_RE.match(name)
+        if match and value.strip():
+            channels[match.group(1).lower()] = value.strip()
+    return channels
+
+
 @dataclass(frozen=True)
 class Config:
     telegram_bot_token: str
-    telegram_channel_id: str
     deepl_api_key: str
 
-    poll_interval_minutes: int = 30
+    # channel key -> channel id, from <KEY>_TELEGRAM_CHANNEL_ID env vars.
+    telegram_channel_ids: dict[str, str] = field(default_factory=dict)
+    # Fallback for channel keys without a dedicated variable (TELEGRAM_CHANNEL_ID).
+    default_channel_id: str | None = None
+
+    # Posting-queue intervals: English sources need no translation and post
+    # more often; sources requiring translation post on the slower cadence.
+    en_post_interval_minutes: int = 15
+    translated_post_interval_minutes: int = 60
     news_fetch_limit: int = 10
     db_path: str = "data/posted.db"
     sources_path: str = "bot/sources.json"
@@ -83,6 +105,10 @@ class Config:
     skip_categories: tuple[str, ...] = ()
     include_categories: tuple[str, ...] = ()
     post_style: str = "photo_full"
+
+    def channel_for(self, channel_key: str) -> str | None:
+        """The Telegram channel id behind a source's 'channel' key."""
+        return self.telegram_channel_ids.get(channel_key) or self.default_channel_id
 
     @property
     def post_with_image(self) -> bool:
@@ -107,9 +133,13 @@ class Config:
     def from_env(cls) -> "Config":
         return cls(
             telegram_bot_token=_require("TELEGRAM_BOT_TOKEN"),
-            telegram_channel_id=_require("TELEGRAM_CHANNEL_ID"),
             deepl_api_key=_require("DEEPL_API_KEY"),
-            poll_interval_minutes=_get_int("POLL_INTERVAL_MINUTES", 30),
+            telegram_channel_ids=_get_channel_ids(),
+            default_channel_id=os.environ.get("TELEGRAM_CHANNEL_ID", "").strip() or None,
+            en_post_interval_minutes=_get_int("EN_POST_INTERVAL_MINUTES", 15),
+            translated_post_interval_minutes=_get_int(
+                "TRANSLATED_POST_INTERVAL_MINUTES", 60
+            ),
             news_fetch_limit=_get_int("NEWS_FETCH_LIMIT", 10),
             db_path=os.environ.get("DB_PATH", "data/posted.db"),
             sources_path=os.environ.get("SOURCES_PATH", "bot/sources.json"),
