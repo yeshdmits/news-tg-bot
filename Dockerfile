@@ -1,5 +1,11 @@
 FROM python:3.12-slim
 
+# The package version is derived from git tags (setuptools-scm), but .git is
+# not in the build context — CI passes the released version as a build arg;
+# local builds get the 0.0.0 placeholder.
+ARG APP_VERSION=0.0.0
+ENV SETUPTOOLS_SCM_PRETEND_VERSION_FOR_NEWS_TG_BOT=$APP_VERSION
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     TZ=UTC

@@ -52,6 +52,18 @@ binary so line endings are never normalized.
 
 ## What a good PR looks like
 
+- **The PR title must be a Conventional Commit** (`feat: …`, `fix: …`,
+  `docs: …`, …) — the `pr-title` status check enforces it. The repository
+  squash-merges, so the title becomes the commit on `main` and directly
+  decides the release: `fix:` cuts a patch release on merge, `feat:` a
+  minor one, and `docs:`/`chore:`/`ci:`/`test:`/`refactor:` release
+  nothing. There is no release PR — merging is releasing. See
+  `docs/releasing.md`.
+- **Breaking change?** Use `feat!:`/`fix!:` in the title, or add a
+  `BREAKING CHANGE: <description>` footer to the squash commit *body* in
+  the merge dialog. A footer that only exists in a PR comment or a squashed
+  intermediate commit is silently lost and the version comes out too small.
+  (While the version is 0.x, breaking changes bump minor, not major.)
 - One concern per PR; behaviour changes come with tests that fail without
   the change.
 - New spec fields belong in `feedspec/model.py` with validation, a loader
@@ -65,4 +77,5 @@ binary so line endings are never normalized.
   (real chat ids, personal registry/resource names) in tracked files — run
   it locally before pushing.
 - Don't bump the spec `version` field unless the change is breaking; if it
-  is, document the migration in `CHANGELOG.md`.
+  is, mark the PR as breaking (see above) and describe the migration in the
+  PR description, which feeds the generated release notes.
