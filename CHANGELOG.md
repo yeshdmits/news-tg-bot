@@ -12,6 +12,13 @@ The configuration format (`spec.json`) is versioned independently via its
 `version` field; changes to it are called out in the entry for the release
 that made them.
 
+## 0.1.0 (2026-08-02)
+
+
+### Continuous Integration
+
+* single main-branch pipeline and automated releases ([#1](https://github.com/yeshdmits/news-tg-bot/issues/1)) ([4e83b65](https://github.com/yeshdmits/news-tg-bot/commit/4e83b6566fe23f65f02fee1febf251a151b364c1))
+
 ## [Unreleased]
 
 ## [0.1.0] — 2026-08-02
