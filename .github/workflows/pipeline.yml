@@ -1,10 +1,18 @@
 name: Build, Test & Push Docker Image
 
-# Fork-friendly by design:
+# Release-driven, fork-friendly by design:
 #   - test + neutrality guard run on every push and PR with zero secrets;
-#   - build-and-push publishes to ghcr.io/<this repo> with the built-in
-#     GITHUB_TOKEN unless vars.IMAGE_NAME points elsewhere (then registry
-#     credentials come from secrets);
+#     PRs also build the image without publishing it;
+#   - every push to main publishes the image as <short-sha> and latest, so
+#     latest always tracks the newest main commit — but does NOT deploy;
+#   - a v* tag (created by release-please when a release PR merges;
+#     Conventional Commits decide the version: feat → minor, fix → patch,
+#     breaking → major, docs/chore/ci/etc → no release, Release-As footer
+#     overrides) additionally publishes the release-version image tag and
+#     is the only trigger that deploys;
+#   - the image goes to ghcr.io/<this repo> with the built-in GITHUB_TOKEN
+#     unless vars.IMAGE_NAME points elsewhere (then registry credentials
+#     come from secrets);
 #   - deploy runs only when the deploy repository variables are set, so a
 #     fresh fork skips it with a message instead of failing.
 # Never use pull_request_target here — it would run untrusted PR code with
@@ -12,9 +20,10 @@ name: Build, Test & Push Docker Image
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
+    tags: ["v*"]
   pull_request:
-    branches: [main, develop]
+    branches: [main]
 
 env:
   # Repository variable IMAGE_NAME overrides (e.g. docker.io/<user>/<repo>);
@@ -91,7 +100,7 @@ jobs:
 
       - name: Log in to GHCR
         if: >-
-          github.event_name == 'push' && github.ref == 'refs/heads/main'
+          github.event_name == 'push'
           && startsWith(env.IMAGE_NAME, 'ghcr.io/')
         uses: docker/login-action@v3
         with:
@@ -101,7 +110,7 @@ jobs:
 
       - name: Log in to Docker Hub
         if: >-
-          github.event_name == 'push' && github.ref == 'refs/heads/main'
+          github.event_name == 'push'
           && !startsWith(env.IMAGE_NAME, 'ghcr.io/')
         uses: docker/login-action@v3
         with:
@@ -114,6 +123,7 @@ jobs:
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
+            type=semver,pattern={{version}}
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,prefix=
 
@@ -121,7 +131,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
@@ -130,16 +140,17 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build-and-push
-    # Deploys only from main — the same gate as the image push, since the
-    # sha-tagged image only exists in the registry for main commits — and
-    # only when the deploy target is configured via repository variables,
-    # so forks skip this instead of failing. Topology lives in
-    # deploy/terraform (applied manually); this job only swaps images.
+    # Deploys only from v* release tags — the same gate as the image push,
+    # since the version-tagged image only exists in the registry for
+    # releases — and only when the deploy target is configured via
+    # repository variables, so forks skip this instead of failing. Topology
+    # lives in deploy/terraform (applied manually); this job only swaps
+    # images.
     # Ordering below is load-bearing: the migrate job must reach Succeeded
     # before either consumer sees the new image, because the new code may
     # depend on the new schema — do not parallelise the steps.
     if: >-
-      github.event_name == 'push' && github.ref == 'refs/heads/main'
+      github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
       && vars.AZURE_RESOURCE_GROUP != '' && vars.NAME_PREFIX != ''
     # Two rapid merges must not race each other through migrate/rollout.
     concurrency:
@@ -161,7 +172,7 @@ jobs:
 
       - name: Run migration job
         run: |
-          IMAGE=${{ env.IMAGE_NAME }}:${GITHUB_SHA::7}
+          IMAGE=${{ env.IMAGE_NAME }}:${GITHUB_REF_NAME#v}
           az containerapp job update -n "$PREFIX-migrate" -g "$AZ_RG" --image "$IMAGE"
           az containerapp job start  -n "$PREFIX-migrate" -g "$AZ_RG"
 
@@ -181,7 +192,7 @@ jobs:
 
       - name: Update fetch job and webhook app
         run: |
-          IMAGE=${{ env.IMAGE_NAME }}:${GITHUB_SHA::7}
+          IMAGE=${{ env.IMAGE_NAME }}:${GITHUB_REF_NAME#v}
           az containerapp job update -n "$PREFIX-fetch" -g "$AZ_RG" --image "$IMAGE"
           az containerapp update     -n "$PREFIX-bot"   -g "$AZ_RG" --image "$IMAGE"
 
@@ -189,7 +200,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-and-push
     if: >-
-      github.event_name == 'push' && github.ref == 'refs/heads/main'
+      github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
       && (vars.AZURE_RESOURCE_GROUP == '' || vars.NAME_PREFIX == '')
     steps:
       - name: Explain how to enable deploys
