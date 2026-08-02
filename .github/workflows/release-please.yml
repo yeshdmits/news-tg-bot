@@ -1,0 +1,29 @@
+name: Release Please
+
+# Cuts releases from conventional squash commits on main: maintains a release
+# PR, and on its merge creates the version tag and the GitHub release.
+# The version can be forced for a given release with a "Release-As: x.y.z"
+# footer in a commit message (used to bootstrap 0.1.0).
+#
+# The built-in GITHUB_TOKEN cannot trigger other workflows, so required
+# status checks on the release PR stay pending until it is closed and
+# reopened once — or set a RELEASE_PLEASE_TOKEN secret (a PAT with contents
+# and pull-requests write) to avoid that.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
