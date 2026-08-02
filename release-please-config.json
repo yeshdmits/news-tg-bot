@@ -5,7 +5,8 @@
       "release-type": "python",
       "package-name": "news-tg-bot",
       "include-component-in-tag": false,
-      "include-v-in-tag": true
+      "include-v-in-tag": true,
+      "bump-minor-pre-major": true
     }
   }
 }
