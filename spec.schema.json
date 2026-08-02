@@ -1,0 +1,891 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Spec",
+  "$defs": {
+    "AlertingCfg": {
+      "additionalProperties": false,
+      "description": "Operator alerting behaviour: escalation ladder, rate limits,\ndigests, quiet hours.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "escalation_ladder": {
+          "default": [
+            1,
+            10,
+            50,
+            200
+          ],
+          "items": {
+            "type": "integer"
+          },
+          "title": "Escalation Ladder",
+          "type": "array"
+        },
+        "cooldown_min": {
+          "default": 30,
+          "title": "Cooldown Min",
+          "type": "integer"
+        },
+        "max_alerts_per_hour": {
+          "default": 10,
+          "title": "Max Alerts Per Hour",
+          "type": "integer"
+        },
+        "digest_interval_min": {
+          "default": 360,
+          "title": "Digest Interval Min",
+          "type": "integer"
+        },
+        "silent_below": {
+          "default": "error",
+          "enum": [
+            "critical",
+            "error",
+            "warning",
+            "info"
+          ],
+          "title": "Silent Below",
+          "type": "string"
+        },
+        "edit_on_escalation": {
+          "default": true,
+          "title": "Edit On Escalation",
+          "type": "boolean"
+        },
+        "pin_critical": {
+          "default": true,
+          "title": "Pin Critical",
+          "type": "boolean"
+        },
+        "quiet_hours": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/QuietHours"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "AlertingCfg",
+      "type": "object"
+    },
+    "AuthorizationCfg": {
+      "additionalProperties": false,
+      "description": "Who may run read and write ops-bot commands.",
+      "properties": {
+        "read_roles": {
+          "default": [
+            "member"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "title": "Read Roles",
+          "type": "array"
+        },
+        "write_roles": {
+          "default": [
+            "admin"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "title": "Write Roles",
+          "type": "array"
+        },
+        "write_allowlist": {
+          "default": [],
+          "items": {
+            "type": "integer"
+          },
+          "title": "Write Allowlist",
+          "type": "array"
+        },
+        "admin_cache_min": {
+          "default": 15,
+          "title": "Admin Cache Min",
+          "type": "integer"
+        }
+      },
+      "title": "AuthorizationCfg",
+      "type": "object"
+    },
+    "Binding": {
+      "additionalProperties": false,
+      "description": "Source\u2192channel binding. Only binding-scoped keys are modelled;\nchannel-scoped keys (id, post_interval_min, max_posts_per_run,\nmax_age_min) are rejected by the loader before pydantic runs.",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "include_categories": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Include Categories",
+          "type": "array"
+        },
+        "exclude_categories": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Exclude Categories",
+          "type": "array"
+        },
+        "lead_max_length": {
+          "default": 300,
+          "title": "Lead Max Length",
+          "type": "integer"
+        },
+        "translate_lead": {
+          "default": false,
+          "title": "Translate Lead",
+          "type": "boolean"
+        },
+        "post_style": {
+          "anyOf": [
+            {
+              "enum": [
+                "photo_full",
+                "link_preview",
+                "text_only"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Post Style"
+        },
+        "when": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WhenClause"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "Binding",
+      "type": "object"
+    },
+    "ChannelDef": {
+      "additionalProperties": false,
+      "description": "Channel registry entry: a Telegram chat and its posting knobs.",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "language": {
+          "default": "en",
+          "title": "Language",
+          "type": "string"
+        },
+        "post_interval_min": {
+          "default": 30,
+          "title": "Post Interval Min",
+          "type": "integer"
+        },
+        "max_posts_per_run": {
+          "default": 5,
+          "title": "Max Posts Per Run",
+          "type": "integer"
+        },
+        "max_age_min": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Age Min"
+        },
+        "queue_policy": {
+          "default": "drop_oldest",
+          "enum": [
+            "drop_oldest",
+            "drain_all"
+          ],
+          "title": "Queue Policy",
+          "type": "string"
+        },
+        "post_style": {
+          "default": "link_preview",
+          "enum": [
+            "photo_full",
+            "link_preview",
+            "text_only"
+          ],
+          "title": "Post Style",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "id"
+      ],
+      "title": "ChannelDef",
+      "type": "object"
+    },
+    "ClassificationRule": {
+      "additionalProperties": false,
+      "description": "Severity of an error class, optionally escalating to a higher\nseverity after ``escalate_after`` consecutive occurrences.",
+      "properties": {
+        "severity": {
+          "enum": [
+            "critical",
+            "error",
+            "warning",
+            "info"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "escalate_after": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Escalate After"
+        },
+        "escalates_to": {
+          "anyOf": [
+            {
+              "enum": [
+                "critical",
+                "error",
+                "warning",
+                "info"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Escalates To"
+        }
+      },
+      "required": [
+        "severity"
+      ],
+      "title": "ClassificationRule",
+      "type": "object"
+    },
+    "ErrorsConfig": {
+      "additionalProperties": false,
+      "description": "The spec's ``errors`` section: ops chat, command authorization,\nalerting, and per-class / per-source classification overrides.",
+      "properties": {
+        "ops_chat_id": {
+          "title": "Ops Chat Id",
+          "type": "string"
+        },
+        "ops_topic_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ops Topic Id"
+        },
+        "digest_topic_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Digest Topic Id"
+        },
+        "authorization": {
+          "$ref": "#/$defs/AuthorizationCfg",
+          "default": {
+            "read_roles": [
+              "member"
+            ],
+            "write_roles": [
+              "admin"
+            ],
+            "write_allowlist": [],
+            "admin_cache_min": 15
+          }
+        },
+        "alerting": {
+          "$ref": "#/$defs/AlertingCfg",
+          "default": {
+            "enabled": true,
+            "escalation_ladder": [
+              1,
+              10,
+              50,
+              200
+            ],
+            "cooldown_min": 30,
+            "max_alerts_per_hour": 10,
+            "digest_interval_min": 360,
+            "silent_below": "error",
+            "edit_on_escalation": true,
+            "pin_critical": true,
+            "quiet_hours": null
+          }
+        },
+        "classification": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ClassificationRule"
+          },
+          "default": {},
+          "title": "Classification",
+          "type": "object"
+        },
+        "source_overrides": {
+          "additionalProperties": {
+            "additionalProperties": {
+              "$ref": "#/$defs/ClassificationRule"
+            },
+            "type": "object"
+          },
+          "default": {},
+          "title": "Source Overrides",
+          "type": "object"
+        },
+        "retention": {
+          "$ref": "#/$defs/RetentionCfg",
+          "default": {
+            "occurrences_days": 30,
+            "events_days": 365
+          }
+        }
+      },
+      "required": [
+        "ops_chat_id"
+      ],
+      "title": "ErrorsConfig",
+      "type": "object"
+    },
+    "Mapping": {
+      "additionalProperties": false,
+      "description": "Per-source extraction rules: expressions locating each item field\nin the feed XML, plus lead/category post-processing knobs. The\nexpression grammar is documented in fetcher.mapping.",
+      "properties": {
+        "items": {
+          "title": "Items",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "id_pattern": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id Pattern"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        },
+        "published": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Published"
+        },
+        "published_format": {
+          "anyOf": [
+            {
+              "enum": [
+                "rfc822",
+                "iso8601"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Published Format"
+        },
+        "lead": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lead"
+        },
+        "allow_empty_lead": {
+          "default": false,
+          "title": "Allow Empty Lead",
+          "type": "boolean"
+        },
+        "lead_fallback": {
+          "anyOf": [
+            {
+              "const": "title",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lead Fallback"
+        },
+        "lead_html": {
+          "default": false,
+          "title": "Lead Html",
+          "type": "boolean"
+        },
+        "lead_remove": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Lead Remove",
+          "type": "array"
+        },
+        "image": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image"
+        },
+        "category": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Category"
+        },
+        "category_from": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Category From"
+        },
+        "copyright": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Copyright"
+        }
+      },
+      "required": [
+        "items",
+        "id",
+        "title",
+        "url"
+      ],
+      "title": "Mapping",
+      "type": "object"
+    },
+    "QuietHours": {
+      "additionalProperties": false,
+      "description": "Daily window during which alerts below ``suppress_below`` are held.",
+      "properties": {
+        "from": {
+          "title": "From",
+          "type": "string"
+        },
+        "to": {
+          "title": "To",
+          "type": "string"
+        },
+        "timezone": {
+          "default": "UTC",
+          "title": "Timezone",
+          "type": "string"
+        },
+        "suppress_below": {
+          "default": "critical",
+          "enum": [
+            "critical",
+            "error",
+            "warning",
+            "info"
+          ],
+          "title": "Suppress Below",
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "to"
+      ],
+      "title": "QuietHours",
+      "type": "object"
+    },
+    "RetentionCfg": {
+      "additionalProperties": false,
+      "description": "How long error occurrences and events are kept.",
+      "properties": {
+        "occurrences_days": {
+          "default": 30,
+          "title": "Occurrences Days",
+          "type": "integer"
+        },
+        "events_days": {
+          "default": 365,
+          "title": "Events Days",
+          "type": "integer"
+        }
+      },
+      "title": "RetentionCfg",
+      "type": "object"
+    },
+    "SourceDef": {
+      "additionalProperties": false,
+      "description": "A feed source: where and how often to fetch, how to map items,\nand the channel bindings that receive them.",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "const": "xml",
+          "default": "xml",
+          "title": "Type",
+          "type": "string"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        },
+        "kind": {
+          "default": "general_news",
+          "enum": [
+            "general_news",
+            "central_bank",
+            "statistics",
+            "press_wire",
+            "exchange"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Region"
+        },
+        "language": {
+          "title": "Language",
+          "type": "string"
+        },
+        "fetch_limit": {
+          "default": 10,
+          "title": "Fetch Limit",
+          "type": "integer"
+        },
+        "fetch_interval_min": {
+          "default": 15,
+          "title": "Fetch Interval Min",
+          "type": "integer"
+        },
+        "cold_start_policy": {
+          "default": "skip_all",
+          "title": "Cold Start Policy",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "url_verified": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Url Verified"
+        },
+        "namespaces": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "title": "Namespaces",
+          "type": "object"
+        },
+        "schema_file": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Schema File"
+        },
+        "channels": {
+          "items": {
+            "$ref": "#/$defs/Binding"
+          },
+          "title": "Channels",
+          "type": "array"
+        },
+        "mapping": {
+          "$ref": "#/$defs/Mapping"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        }
+      },
+      "required": [
+        "name",
+        "url",
+        "language",
+        "channels",
+        "mapping"
+      ],
+      "title": "SourceDef",
+      "type": "object"
+    },
+    "WhenClause": {
+      "additionalProperties": false,
+      "description": "Content condition on a binding: keyword/category/kind tests an item\nmust pass to be routed to the channel. Empty groups are no-ops.",
+      "properties": {
+        "keywords_any": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Keywords Any",
+          "type": "array"
+        },
+        "keywords_all": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Keywords All",
+          "type": "array"
+        },
+        "keywords_none": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Keywords None",
+          "type": "array"
+        },
+        "categories_any": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Categories Any",
+          "type": "array"
+        },
+        "source_kinds": {
+          "default": [],
+          "items": {
+            "enum": [
+              "general_news",
+              "central_bank",
+              "statistics",
+              "press_wire",
+              "exchange"
+            ],
+            "type": "string"
+          },
+          "title": "Source Kinds",
+          "type": "array"
+        },
+        "match_fields": {
+          "default": [
+            "title",
+            "lead"
+          ],
+          "items": {
+            "enum": [
+              "title",
+              "lead"
+            ],
+            "type": "string"
+          },
+          "title": "Match Fields",
+          "type": "array"
+        },
+        "case_sensitive": {
+          "default": false,
+          "title": "Case Sensitive",
+          "type": "boolean"
+        }
+      },
+      "title": "WhenClause",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The whole version-2 spec document.",
+  "properties": {
+    "version": {
+      "const": 2,
+      "title": "Version",
+      "type": "integer"
+    },
+    "defaults": {
+      "additionalProperties": true,
+      "default": {},
+      "title": "Defaults",
+      "type": "object"
+    },
+    "channels": {
+      "items": {
+        "$ref": "#/$defs/ChannelDef"
+      },
+      "title": "Channels",
+      "type": "array"
+    },
+    "sources": {
+      "items": {
+        "$ref": "#/$defs/SourceDef"
+      },
+      "title": "Sources",
+      "type": "array"
+    },
+    "errors": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ErrorsConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "$schema": {
+      "type": "string",
+      "description": "Editor pointer at spec.schema.json; ignored by the loader."
+    }
+  },
+  "required": [
+    "version",
+    "channels",
+    "sources"
+  ],
+  "type": "object"
+}

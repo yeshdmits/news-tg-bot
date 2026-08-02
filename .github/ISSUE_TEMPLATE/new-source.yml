@@ -1,0 +1,43 @@
+name: New source request / problem
+description: Ask for help adding a feed, or report a source that stopped parsing
+labels: [source]
+body:
+  - type: input
+    id: feed-url
+    attributes:
+      label: Feed URL
+      description: The RSS/Atom URL you are trying to ingest
+      placeholder: https://example.org/feeds/world.xml
+    validations:
+      required: true
+  - type: textarea
+    id: sample-xml
+    attributes:
+      label: Sample of the feed XML
+      description: >-
+        Paste the first item element(s) of the feed (curl the URL and trim).
+        This is the single most useful thing you can provide — mappings are
+        written against the real XML shape.
+      render: xml
+    validations:
+      required: true
+  - type: textarea
+    id: mapping
+    attributes:
+      label: Your mapping attempt
+      description: The `mapping` block (and `namespaces`, if any) from your spec.json source entry
+      render: json
+  - type: textarea
+    id: fetch-output
+    attributes:
+      label: Output of `python -m cli fetch <source> --dry-run`
+      description: >-
+        Run the credential-free rehearsal against your spec and paste the
+        output, including any MappingEvalError or XSD validation message.
+      render: text
+  - type: textarea
+    id: expectation
+    attributes:
+      label: What you expected vs what happened
+    validations:
+      required: true

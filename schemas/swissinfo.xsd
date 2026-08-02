@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Lax schema for the SWI swissinfo.ch Top News RSS 2.0 feed: only the
+     elements the bot extracts (item title/link/guid, optionally description/
+     pubDate/category/enclosure) are constrained; everything else is skipped. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+
+  <xs:element name="rss">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="channel">
+          <xs:complexType>
+            <xs:sequence>
+              <!-- lax: <item> matches its global declaration below and is
+                   validated; undeclared channel children are skipped -->
+              <xs:any processContents="lax" minOccurs="0" maxOccurs="unbounded"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+      <xs:attribute name="version" type="xs:string"/>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="item">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="title" type="xs:string"/>
+        <xs:element name="link" type="xs:string"/>
+        <xs:element name="pubDate" type="xs:string" minOccurs="0"/>
+        <xs:element name="description" type="xs:string" minOccurs="0"/>
+        <!-- namespaced extras such as dc:creator -->
+        <xs:any namespace="##other" processContents="skip"
+                minOccurs="0" maxOccurs="unbounded"/>
+        <xs:element name="category" type="xs:string" minOccurs="0" maxOccurs="unbounded"/>
+        <xs:element name="guid">
+          <xs:complexType>
+            <xs:simpleContent>
+              <xs:extension base="xs:string">
+                <xs:attribute name="isPermaLink" type="xs:string"/>
+              </xs:extension>
+            </xs:simpleContent>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="enclosure" minOccurs="0">
+          <xs:complexType>
+            <xs:attribute name="url" type="xs:string"/>
+            <xs:attribute name="type" type="xs:string"/>
+            <xs:attribute name="length" type="xs:string"/>
+          </xs:complexType>
+        </xs:element>
+        <!-- namespaced extras such as media:copyright and media:title -->
+        <xs:any namespace="##other" processContents="skip"
+                minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+</xs:schema>

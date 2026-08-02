@@ -1,0 +1,13 @@
+# Copy to backend.hcl (gitignored) and point it at YOUR state storage.
+# The storage account is created out-of-band before the first init — see
+# the bootstrap commands at the top of main.tf. Then:
+#   terraform init -backend-config=backend.hcl
+
+resource_group_name  = "<tfstate-resource-group>"
+storage_account_name = "<globally-unique-storage-account>"
+container_name       = "tfstate"
+key                  = "news-tg-bot.tfstate"
+
+# Optional: authenticate to the state blob with Azure AD instead of access
+# keys (needs Storage Blob Data Contributor on the container):
+# use_azuread_auth = true

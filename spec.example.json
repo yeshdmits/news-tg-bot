@@ -1,0 +1,224 @@
+{
+  "$schema": "./spec.schema.json",
+  "version": 2,
+
+  "errors": {
+    "ops_chat_id": "-4999900004",
+    "ops_topic_id": 42,
+    "digest_topic_id": 43,
+
+    "authorization": {
+      "read_roles": ["member"],
+      "write_roles": ["admin"],
+      "write_allowlist": [999900001],
+      "admin_cache_min": 15
+    },
+
+    "alerting": {
+      "enabled": true,
+      "escalation_ladder": [1, 10, 50, 200],
+      "cooldown_min": 30,
+      "max_alerts_per_hour": 10,
+      "digest_interval_min": 360,
+      "silent_below": "error",
+      "edit_on_escalation": true,
+      "pin_critical": true,
+      "quiet_hours": {
+        "from": "23:00",
+        "to": "07:00",
+        "timezone": "UTC",
+        "suppress_below": "critical"
+      }
+    },
+
+    "classification": {
+      "SchemaValidationFailed": { "severity": "critical", "escalate_after": 1 },
+      "FetchHttpError5xx": { "severity": "warning", "escalate_after": 5, "escalates_to": "error" },
+      "TranslationProviderError": { "severity": "warning", "escalate_after": 3, "escalates_to": "error" }
+    },
+
+    "source_overrides": {
+      "snb-press": { "FetchHttpError4xx": { "severity": "info" } }
+    },
+
+    "retention": { "occurrences_days": 30, "events_days": 365 }
+  },
+
+  "defaults": {
+    "fetch_limit": 10,
+    "fetch_interval_min": 15,
+    "lead_max_length": 300,
+    "translate_lead": false,
+    "post_style": "link_preview",
+    "cold_start_policy": "skip_all"
+  },
+
+  "channels": [
+    {
+      "name": "econ-en",
+      "id": "-100999900003",
+      "language": "en",
+      "post_interval_min": 5,
+      "max_posts_per_run": 12,
+      "max_age_min": 240,
+      "queue_policy": "drain_all",
+      "post_style": "link_preview"
+    },
+    {
+      "name": "rates-alerts",
+      "id": "-100999900005",
+      "language": "en",
+      "post_interval_min": 1,
+      "max_posts_per_run": 20,
+      "max_age_min": null,
+      "queue_policy": "drain_all",
+      "post_style": "text_only"
+    }
+  ],
+
+  "sources": [
+    {
+      "name": "ecb-press",
+      "kind": "central_bank",
+      "region": "EU",
+      "type": "xml",
+      "url": "https://www.ecb.europa.eu/rss/press.xml",
+      "url_verified": "2026-08-01",
+      "language": "en",
+      "fetch_limit": 20,
+      "fetch_interval_min": 5,
+      "channels": [
+        {
+          "name": "econ-en",
+          "include_categories": ["pr"],
+          "lead_max_length": 400
+        }
+      ],
+      "schema_file": null,
+      "mapping": {
+        "items": "channel/item",
+        "id": "guid",
+        "title": "title",
+        "lead": null,
+        "allow_empty_lead": true,
+        "lead_fallback": "title",
+        "url": "link",
+        "published": "pubDate",
+        "published_format": "rfc822",
+        "category": null,
+        "category_from": "url_path_segment:2"
+      },
+      "notes": "Verified 2026-08-01: items contain title/link/guid/pubDate only. No description, no category, no image. This source is why allow_empty_lead and category_from exist. The URL path distinguishes press releases (press/pr) from speeches (press/key); include_categories [\"pr\"] keeps only the releases."
+    },
+    {
+      "name": "fed-press-all",
+      "kind": "central_bank",
+      "region": "US",
+      "type": "xml",
+      "url": "https://www.federalreserve.gov/feeds/press_all.xml",
+      "url_verified": "2026-08-01",
+      "language": "en",
+      "fetch_limit": 20,
+      "fetch_interval_min": 5,
+      "channels": [
+        { "name": "econ-en", "lead_max_length": 400 },
+        {
+          "name": "rates-alerts",
+          "post_style": "text_only",
+          "when": {
+            "keywords_any": ["FOMC", "federal funds", "interest rate"],
+            "match_fields": ["title", "lead"],
+            "case_sensitive": false
+          }
+        }
+      ],
+      "schema_file": null,
+      "mapping": {
+        "items": "channel/item",
+        "id": "guid",
+        "title": "title",
+        "lead": "description",
+        "url": "link",
+        "published": "pubDate",
+        "published_format": "rfc822",
+        "category": "category"
+      },
+      "notes": "The second binding shows a when clause: only rate-related items reach rates-alerts; everything still reaches econ-en."
+    },
+    {
+      "name": "fed-monetary",
+      "kind": "central_bank",
+      "region": "US",
+      "type": "xml",
+      "url": "https://www.federalreserve.gov/feeds/press_monetary.xml",
+      "url_verified": "2026-08-01",
+      "language": "en",
+      "fetch_limit": 10,
+      "fetch_interval_min": 5,
+      "cold_start_policy": "post_newest:1",
+      "channels": [{ "name": "econ-en", "lead_max_length": 400 }],
+      "schema_file": null,
+      "mapping": {
+        "items": "channel/item",
+        "id": "guid",
+        "title": "title",
+        "lead": ["description", "title"],
+        "url": "link",
+        "published": "pubDate",
+        "published_format": "rfc822"
+      },
+      "notes": "Overlaps fed-press-all by design; global dedupe collapses them. cold_start_policy post_newest:1 posts the single newest item on first fetch instead of skipping the backlog. The lead is a fallback list: first matching expression wins."
+    },
+    {
+      "name": "snb-press",
+      "kind": "central_bank",
+      "region": "CH",
+      "type": "xml",
+      "url": "https://www.snb.ch/public/en/rss/news",
+      "url_verified": "2026-08-01",
+      "language": "en",
+      "fetch_limit": 10,
+      "fetch_interval_min": 5,
+      "channels": [{ "name": "econ-en", "lead_max_length": 400 }],
+      "schema_file": null,
+      "namespaces": { "dc": "http://purl.org/dc/elements/1.1/" },
+      "mapping": {
+        "items": "channel/item",
+        "id": "guid",
+        "title": "title",
+        "lead": null,
+        "allow_empty_lead": true,
+        "lead_fallback": "title",
+        "url": "link",
+        "published": "dc:date",
+        "published_format": "iso8601"
+      },
+      "notes": "Verified 2026-08-01: RSS 2.0, items carry title/link/guid plus dc:date (ISO 8601) — no pubDate, no description, no image; this source is why published_format iso8601 exists. errors.source_overrides downgrades its 4xx noise to info."
+    },
+    {
+      "name": "ecb-fx-usd",
+      "kind": "statistics",
+      "region": "EU",
+      "type": "xml",
+      "url": "https://www.ecb.europa.eu/rss/fxref-usd.html",
+      "url_verified": null,
+      "enabled": false,
+      "language": "en",
+      "fetch_limit": 5,
+      "fetch_interval_min": 60,
+      "channels": [{ "name": "rates-alerts" }],
+      "schema_file": null,
+      "mapping": {
+        "items": "channel/item",
+        "id": "link",
+        "title": "title",
+        "lead": ["description", "title"],
+        "url": "link",
+        "published": "pubDate",
+        "published_format": "rfc822",
+        "copyright": "copyright"
+      },
+      "notes": "Ships disabled on purpose: the EUR/USD reference-rate feed is RDF, so this mapping has not been verified against a capture yet. The url_verified: null warning from `validate` is the reminder. Capture the feed, adjust the mapping, set url_verified and enabled: true."
+    }
+  ]
+}

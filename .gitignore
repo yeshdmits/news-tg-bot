@@ -1,0 +1,24 @@
+__pycache__/
+*.pyc
+.env
+data/
+*.db
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+.prompt
+# Live configuration is never tracked — copy spec.example.json instead.
+/spec.json
+deploy/terraform/**/terraform.tfvars
+deploy/terraform/**/*.tfstate*
+deploy/terraform/**/.terraform/
+deploy/terraform/**/backend.hcl
+deploy/terraform/**/spec.local.json
+# Saved plans embed variable values, including secrets.
+deploy/terraform/**/*.tfplan
+# Maintainer-local notes.
+*.local.md

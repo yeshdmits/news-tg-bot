@@ -1,0 +1,44 @@
+# Copy to terraform.tfvars (gitignored) and fill with your values.
+# Nothing here has a usable default that belongs to someone else: every
+# account-identifying value must be yours.
+
+# --- required ---------------------------------------------------------------
+
+# Azure subscription GUID (az account show --query id -o tsv).
+subscription_id = "<your-subscription-guid>"
+
+# Prefix all resource names derive from: <prefix>-rg, <prefix>-env,
+# <prefix>-pg, <prefix>-bot, <prefix>-fetch, <prefix>-migrate, database
+# <prefix>, admin login <prefix>admin. 3-12 chars, lowercase. The Postgres
+# server name <prefix>-pg must be globally unique.
+name_prefix = "<myproject>"
+
+# Key Vault name — globally unique, 3-24 alphanumeric/dash characters.
+key_vault_name = "<myproject-kv-a1b2c3>"
+
+# Bootstrap image only; CI swaps the running tag afterwards. With the
+# default GitHub workflow this is ghcr.io/<owner>/<repo>:latest (make the
+# GHCR package public, or add a registry block in the module).
+image = "ghcr.io/<owner>/<repo>:latest"
+
+pg_password             = "<32+ chars>"
+telegram_bot_token      = "<123456:ABC-...>"
+telegram_webhook_secret = "<openssl rand -hex 32>"
+translate_api_key       = "<DeepL key, or empty with translate_provider = \"none\">"
+healthcheck_url         = "https://hc-ping.com/<uuid>"
+
+# Your application configuration. Copy spec.example.json here and edit:
+#   cp ../../../spec.example.json spec.local.json
+# The file is gitignored; its content is pushed to Key Vault and injected
+# into the runtime as SPEC_JSON.
+# spec_json_file = "spec.local.json"
+
+# --- optional ---------------------------------------------------------------
+
+# ci_principal_id    = ""        # object id of YOUR GitHub OIDC deploy SP;
+#                                # empty disables the CI Contributor grant
+# location           = "westeurope"
+# dry_run            = "true"    # flip to "false" + apply to go live
+# translate_provider = "deepl"   # or "none"
+# client_ip          = ""        # your IP for direct psql access, optional
+# secrets_wo_version = 1         # bump to push changed secret values

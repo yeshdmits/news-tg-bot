@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "news-tg-bot"
+version = "0.1.0"
+description = "Spec-driven RSS news bot with a PostgreSQL archive"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.27",
+    "lxml>=5.2",
+    "pydantic>=2.7",
+    "psycopg[binary]>=3.1",
+    "alembic>=1.13",
+    "structlog>=24",
+    "starlette>=0.37",
+    "uvicorn>=0.30",
+    "jsonschema>=4.21",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.4", "httpx2>=2"]
+translate = ["deepl>=1.18"]
+export = ["pyarrow>=16"]
+
+[tool.setuptools]
+packages = ["feedspec", "fetcher", "archive", "newsbot"]
+py-modules = ["cli", "specsource"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+markers = [
+    "pg: requires a running PostgreSQL (docker compose up db / CI service container)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"

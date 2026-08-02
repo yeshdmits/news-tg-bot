@@ -1,0 +1,41 @@
+name: Bug report
+description: Something behaves differently from what the docs say
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Include the exact error message or log line if there is one
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      options:
+        - Local (docker compose)
+        - Local (bare CLI)
+        - Azure Container Apps
+        - CI (GitHub Actions)
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: >-
+        Commands you ran, relevant spec.json fragment (redact chat ids and
+        URLs you consider private), and environment variables that differ
+        from the defaults (never paste tokens).
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      placeholder: e.g. 0.1.0 or a short commit sha

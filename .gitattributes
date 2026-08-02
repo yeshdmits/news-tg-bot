@@ -1,0 +1,2 @@
+# Saved feed responses are verbatim server payloads — never normalize them.
+tests/fixtures/*.xml -text

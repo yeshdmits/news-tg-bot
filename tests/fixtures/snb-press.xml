@@ -1,0 +1,434 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss xmlns:atom="http://www.w3.org/2005/Atom" xmlns:cb="http://www.cbwiki.net/wiki/index.php/Specification_1.2/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" version="2.0">
+  <channel>
+    <atom:link href="https://www.snb.ch/en/news-publications/news" rel="self" type="application/rss+xml" />
+    <title>New on the website</title>
+    <link>https://www.snb.ch/en/news-publications/news</link>
+    <description>News on the Swiss National Bank (SNB) website</description>
+    <dc:publisher>SNB</dc:publisher>
+    <dc:date>2026-08-01T15:05:01Z</dc:date>
+    <dc:rights>Copyright © Swiss National Bank, Zurich (Switzerland) 2026</dc:rights>
+    <dcterms:created>2026-08-01T15:05:01Z</dcterms:created>
+    <dcterms:license>https://www.snb.ch/en/srv/disclaimer</dcterms:license>
+    <item>
+      <title>2026-07-31 - Data portal - SNB balance sheet items end of June 2026</title>
+      <link>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260731_c</link>
+      <guid>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260731_c</guid>
+      <cb:news rdf:parseType="Resource">
+        <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Announcement" />
+        <cb:simpleTitle>SNB balance sheet items end of June 2026</cb:simpleTitle>
+        <cb:occurrenceDate>2026-07-31T07:00:00Z</cb:occurrenceDate>
+        <cb:institutionAbbrev>SNB</cb:institutionAbbrev>
+        <cb:resource rdf:parseType="Resource">
+          <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Resource" />
+          <cb:title>SNB balance sheet items end of June 2026</cb:title>
+          <cb:link>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260731_c</cb:link>
+        </cb:resource>
+      </cb:news>
+      <dc:date>2026-07-31T07:00:00Z</dc:date>
+      <dc:language>en</dc:language>
+    </item>
+    <item>
+      <title>2026-07-31 - Data portal - IMF SDDS Plus, 31 July 2026</title>
+      <link>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260731_sddsplus</link>
+      <guid>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260731_sddsplus</guid>
+      <cb:news rdf:parseType="Resource">
+        <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Announcement" />
+        <cb:simpleTitle>IMF SDDS Plus, 31 July 2026</cb:simpleTitle>
+        <cb:occurrenceDate>2026-07-31T07:00:00Z</cb:occurrenceDate>
+        <cb:institutionAbbrev>SNB</cb:institutionAbbrev>
+        <cb:resource rdf:parseType="Resource">
+          <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Resource" />
+          <cb:title>IMF SDDS Plus, 31 July 2026</cb:title>
+          <cb:link>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260731_sddsplus</cb:link>
+        </cb:resource>
+      </cb:news>
+      <dc:date>2026-07-31T07:00:00Z</dc:date>
+      <dc:language>en</dc:language>
+    </item>
+    <item>
+      <title>2026-07-31 - Press release	 - Interim results of the Swiss National Bank as at 30 June 2026</title>
+      <link>https://www.snb.ch/en/publications/communication/press-releases/2026/pre_20260731</link>
+      <guid>https://www.snb.ch/en/publications/communication/press-releases/2026/pre_20260731</guid>
+      <cb:news rdf:parseType="Resource">
+        <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Announcement" />
+        <cb:simpleTitle>Interim results of the Swiss National Bank as at 30 June 2026</cb:simpleTitle>
+        <cb:occurrenceDate>2026-07-31T05:15:00Z</cb:occurrenceDate>
+        <cb:institutionAbbrev>SNB</cb:institutionAbbrev>
+        <cb:resource rdf:parseType="Resource">
+          <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Resource" />
+          <cb:title>Interim results of the Swiss National Bank as at 30 June 2026</cb:title>
+          <cb:link>https://www.snb.ch/en/publications/communication/press-releases/2026/pre_20260731</cb:link>
+        </cb:resource>
+      </cb:news>
+      <dc:date>2026-07-31T05:15:00Z</dc:date>
+      <dc:language>en</dc:language>
+    </item>
+    <item>
+      <title>2026-07-29 - Data portal - Swiss Financial Accounts, Q1 2026</title>
+      <link>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260729_fin</link>
+      <guid>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260729_fin</guid>
+      <cb:news rdf:parseType="Resource">
+        <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Announcement" />
+        <cb:simpleTitle>Swiss Financial Accounts, Q1 2026</cb:simpleTitle>
+        <cb:occurrenceDate>2026-07-29T07:00:00Z</cb:occurrenceDate>
+        <cb:institutionAbbrev>SNB</cb:institutionAbbrev>
+        <cb:resource rdf:parseType="Resource">
+          <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Resource" />
+          <cb:title>Swiss Financial Accounts, Q1 2026</cb:title>
+          <cb:link>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260729_fin</cb:link>
+        </cb:resource>
+      </cb:news>
+      <dc:date>2026-07-29T07:00:00Z</dc:date>
+      <dc:language>en</dc:language>
+    </item>
+    <item>
+      <title>2026-07-27 - Data portal - Important monetary policy data, 27 July 2026</title>
+      <link>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260727_gwd</link>
+      <guid>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260727_gwd</guid>
+      <cb:news rdf:parseType="Resource">
+        <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Announcement" />
+        <cb:simpleTitle>Important monetary policy data, 27 July 2026</cb:simpleTitle>
+        <cb:occurrenceDate>2026-07-27T08:00:00Z</cb:occurrenceDate>
+        <cb:institutionAbbrev>SNB</cb:institutionAbbrev>
+        <cb:resource rdf:parseType="Resource">
+          <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Resource" />
+          <cb:title>Important monetary policy data, 27 July 2026</cb:title>
+          <cb:link>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260727_gwd</cb:link>
+        </cb:resource>
+      </cb:news>
+      <dc:date>2026-07-27T08:00:00Z</dc:date>
+      <dc:language>en</dc:language>
+    </item>
+    <item>
+      <title>2026-07-21 - Data portal - Economic data, July 2026</title>
+      <link>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260721_b</link>
+      <guid>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260721_b</guid>
+      <cb:news rdf:parseType="Resource">
+        <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Announcement" />
+        <cb:simpleTitle>Economic data, July 2026</cb:simpleTitle>
+        <cb:occurrenceDate>2026-07-21T07:00:00Z</cb:occurrenceDate>
+        <cb:institutionAbbrev>SNB</cb:institutionAbbrev>
+        <cb:resource rdf:parseType="Resource">
+          <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Resource" />
+          <cb:title>Economic data, July 2026</cb:title>
+          <cb:link>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260721_b</cb:link>
+        </cb:resource>
+      </cb:news>
+      <dc:date>2026-07-21T07:00:00Z</dc:date>
+      <dc:language>en</dc:language>
+    </item>
+    <item>
+      <title>2026-07-21 - Data portal - Monthly banking statistics, July 2026</title>
+      <link>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260721_bsta</link>
+      <guid>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260721_bsta</guid>
+      <cb:news rdf:parseType="Resource">
+        <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Announcement" />
+        <cb:simpleTitle>Monthly banking statistics, July 2026</cb:simpleTitle>
+        <cb:occurrenceDate>2026-07-21T07:00:00Z</cb:occurrenceDate>
+        <cb:institutionAbbrev>SNB</cb:institutionAbbrev>
+        <cb:resource rdf:parseType="Resource">
+          <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Resource" />
+          <cb:title>Monthly banking statistics, July 2026</cb:title>
+          <cb:link>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260721_bsta</cb:link>
+        </cb:resource>
+      </cb:news>
+      <dc:date>2026-07-21T07:00:00Z</dc:date>
+      <dc:language>en</dc:language>
+    </item>
+    <item>
+      <title>2026-07-20 - Data portal - Important monetary policy data, 20 July 2026</title>
+      <link>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260720_gwd</link>
+      <guid>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260720_gwd</guid>
+      <cb:news rdf:parseType="Resource">
+        <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Announcement" />
+        <cb:simpleTitle>Important monetary policy data, 20 July 2026</cb:simpleTitle>
+        <cb:occurrenceDate>2026-07-20T08:00:00Z</cb:occurrenceDate>
+        <cb:institutionAbbrev>SNB</cb:institutionAbbrev>
+        <cb:resource rdf:parseType="Resource">
+          <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Resource" />
+          <cb:title>Important monetary policy data, 20 July 2026</cb:title>
+          <cb:link>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260720_gwd</cb:link>
+        </cb:resource>
+      </cb:news>
+      <dc:date>2026-07-20T08:00:00Z</dc:date>
+      <dc:language>en</dc:language>
+    </item>
+    <item>
+      <title>2026-07-16 - Monetary policy - Monetary policy assessment of June 2026: Summary of discussion</title>
+      <link>https://www.snb.ch/en/publications/communication/summaries/zus_20260716</link>
+      <guid>https://www.snb.ch/en/publications/communication/summaries/zus_20260716</guid>
+      <cb:news rdf:parseType="Resource">
+        <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Announcement" />
+        <cb:simpleTitle>Monetary policy assessment of June 2026: Summary of discussion</cb:simpleTitle>
+        <cb:occurrenceDate>2026-07-16T07:30:00Z</cb:occurrenceDate>
+        <cb:institutionAbbrev>SNB</cb:institutionAbbrev>
+        <cb:resource rdf:parseType="Resource">
+          <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Resource" />
+          <cb:title>Monetary policy assessment of June 2026: Summary of discussion</cb:title>
+          <cb:link>https://www.snb.ch/en/publications/communication/summaries/zus_20260716</cb:link>
+        </cb:resource>
+      </cb:news>
+      <dc:date>2026-07-16T07:30:00Z</dc:date>
+      <dc:language>en</dc:language>
+    </item>
+    <item>
+      <title>2026-07-14 - Data portal - IMF SDDS Plus, 14 July 2026</title>
+      <link>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260714_sddsplus</link>
+      <guid>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260714_sddsplus</guid>
+      <cb:news rdf:parseType="Resource">
+        <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Announcement" />
+        <cb:simpleTitle>IMF SDDS Plus, 14 July 2026</cb:simpleTitle>
+        <cb:occurrenceDate>2026-07-14T07:00:00Z</cb:occurrenceDate>
+        <cb:institutionAbbrev>SNB</cb:institutionAbbrev>
+        <cb:resource rdf:parseType="Resource">
+          <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Resource" />
+          <cb:title>IMF SDDS Plus, 14 July 2026</cb:title>
+          <cb:link>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260714_sddsplus</cb:link>
+        </cb:resource>
+      </cb:news>
+      <dc:date>2026-07-14T07:00:00Z</dc:date>
+      <dc:language>en</dc:language>
+    </item>
+    <item>
+      <title>2026-07-13 - Data portal - Important monetary policy data, 13 July 2026</title>
+      <link>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260713_gwd</link>
+      <guid>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260713_gwd</guid>
+      <cb:news rdf:parseType="Resource">
+        <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Announcement" />
+        <cb:simpleTitle>Important monetary policy data, 13 July 2026</cb:simpleTitle>
+        <cb:occurrenceDate>2026-07-13T08:00:00Z</cb:occurrenceDate>
+        <cb:institutionAbbrev>SNB</cb:institutionAbbrev>
+        <cb:resource rdf:parseType="Resource">
+          <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Resource" />
+          <cb:title>Important monetary policy data, 13 July 2026</cb:title>
+          <cb:link>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260713_gwd</cb:link>
+        </cb:resource>
+      </cb:news>
+      <dc:date>2026-07-13T08:00:00Z</dc:date>
+      <dc:language>en</dc:language>
+    </item>
+    <item>
+      <title>New circular letter: New information offering on the SNB's market operations</title>
+    </item>
+    <item>
+      <title>2026-07-09 - Antoine Martin: How resilient are decentralised markets?</title>
+      <link>https://www.snb.ch/en/publications/communication/speeches/2026/ref_20260709_anmar</link>
+      <guid>https://www.snb.ch/en/publications/communication/speeches/2026/ref_20260709_anmar</guid>
+      <cb:speech rdf:parseType="Resource">
+        <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#LocatedAnnouncement" />
+        <cb:simpleTitle>How resilient are decentralised markets?</cb:simpleTitle>
+        <cb:occurrenceDate>2026-07-09T16:00:00Z</cb:occurrenceDate>
+        <cb:institutionAbbrev>SNB</cb:institutionAbbrev>
+        <cb:resource rdf:parseType="Resource">
+          <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Resource" />
+          <cb:title>How resilient are decentralised markets?</cb:title>
+          <cb:link>https://www.snb.ch/en/publications/communication/speeches/2026/ref_20260709_anmar</cb:link>
+        </cb:resource>
+        <cb:person rdf:parseType="Resource">
+          <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Person" />
+          <cb:nameAsWritten>Antoine Martin</cb:nameAsWritten>
+          <cb:role rdf:parseType="Resource">
+            <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Role" />
+            <cb:jobTitle>Vice Chairman of the Governing Board</cb:jobTitle>
+          </cb:role>
+        </cb:person>
+        <cb:venue>NY Fed Workshop on the Future of Market Liquidity and Functioning, New York</cb:venue>
+      </cb:speech>
+      <dc:date>2026-07-09T16:00:00Z</dc:date>
+      <dc:language>en</dc:language>
+    </item>
+    <item>
+      <title>WP - 2026-07-09 - David Borner and Heiko Sorg: CIP violations as functional components of the dynamic cross-currency basis curve</title>
+      <link>https://www.snb.ch/en/publications/research/working-papers/2026/working_paper_2026_09</link>
+      <description>The general search for US dollars in forward currency markets, combined with the balance-sheet constraints of intermediary dealers, induces persistent failure of covered interest parity (CIP). We investigate these CIP deviations across the entire maturity spectrum by analyzing the daily dynamics of the USD/CHF cross-currency basis curve. Applying functional principal component analysis, we identify three components that explain virtually all curve dynamics: a persistent, slow-moving level component, a temporary steepener, and a short-end component inducing sharp basis widenings and contractions around quarter-end dates. We provide empirical evidence that CIP-implied carry opportunities and US monetary policy announcements widen the entire basis curve, whereas Fed swap line announcements tend to narrow it. During periods of global turmoil, the slope inverts in response to rising credit and capital stress among dealer banks, while funding stress steepens the curve as swap line usage mitigates short-end distortions. Reporting date effects, funding stress, and deteriorating market liquidity widen the basis primarily at the short- end. We further show that regulatory reporting dates generate systematic window-dressing distortions not only at the short end but also in the slope of the basis curve. This effect has weakened since 2022, which is consistent with recent changes in the regulatory landscape.</description>
+      <guid>https://www.snb.ch/en/publications/research/working-papers/2026/working_paper_2026_09</guid>
+      <cb:paper rdf:parseType="Resource">
+        <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Paper" />
+        <cb:simpleTitle>CIP violations as functional components of the dynamic cross-currency basis curve</cb:simpleTitle>
+        <cb:occurrenceDate>2026-07-08T22:00:00Z</cb:occurrenceDate>
+        <cb:institutionAbbrev>SNB</cb:institutionAbbrev>
+        <cb:keyword>Covered interest parity</cb:keyword>
+        <cb:keyword>FX swaps</cb:keyword>
+        <cb:keyword>Cross-currency basis</cb:keyword>
+        <cb:keyword>Limits to arbitrage</cb:keyword>
+        <cb:keyword>US dollar funding</cb:keyword>
+        <cb:resource rdf:parseType="Resource">
+          <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Resource" />
+          <cb:title>CIP violations as functional components of the dynamic cross-currency basis curve</cb:title>
+          <cb:link>https://www.snb.ch/en/publications/research/working-papers/2026/working_paper_2026_09</cb:link>
+          <cb:description>The general search for US dollars in forward currency markets, combined with the balance-sheet constraints of intermediary dealers, induces persistent failure of covered interest parity (CIP). We investigate these CIP deviations across the entire maturity spectrum by analyzing the daily dynamics of the USD/CHF cross-currency basis curve. Applying functional principal component analysis, we identify three components that explain virtually all curve dynamics: a persistent, slow-moving level component, a temporary steepener, and a short-end component inducing sharp basis widenings and contractions around quarter-end dates. We provide empirical evidence that CIP-implied carry opportunities and US monetary policy announcements widen the entire basis curve, whereas Fed swap line announcements tend to narrow it. During periods of global turmoil, the slope inverts in response to rising credit and capital stress among dealer banks, while funding stress steepens the curve as swap line usage mitigates short-end distortions. Reporting date effects, funding stress, and deteriorating market liquidity widen the basis primarily at the short- end. We further show that regulatory reporting dates generate systematic window-dressing distortions not only at the short end but also in the slope of the basis curve. This effect has weakened since 2022, which is consistent with recent changes in the regulatory landscape.</cb:description>
+        </cb:resource>
+        <cb:person rdf:parseType="Resource">
+          <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Person" />
+          <cb:givenName>David</cb:givenName>
+          <cb:surname>Borner</cb:surname>
+          <cb:nameAsWritten>David Borner</cb:nameAsWritten>
+        </cb:person>
+        <cb:person rdf:parseType="Resource">
+          <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Person" />
+          <cb:givenName>Heiko</cb:givenName>
+          <cb:surname>Sorg</cb:surname>
+          <cb:nameAsWritten>Heiko Sorg</cb:nameAsWritten>
+        </cb:person>
+        <cb:byline>David Borner and Heiko Sorg</cb:byline>
+        <cb:publicationDate>2026</cb:publicationDate>
+        <cb:publication>SNB Working Papers</cb:publication>
+        <cb:issue>2026-09</cb:issue>
+        <cb:JELCode>F31</cb:JELCode>
+        <cb:JELCode>G15</cb:JELCode>
+        <cb:JELCode>G2</cb:JELCode>
+      </cb:paper>
+      <dc:date>2026-07-08T22:00:00Z</dc:date>
+      <dc:language>en</dc:language>
+    </item>
+    <item>
+      <title>2026-07-08 - Martin Schlegel: Aktuelle Wirtschaftslage und Geldpolitik</title>
+      <link>https://www.snb.ch/en/publications/communication/speeches/2026/ref_20260708_msl</link>
+      <guid>https://www.snb.ch/en/publications/communication/speeches/2026/ref_20260708_msl</guid>
+      <cb:speech rdf:parseType="Resource">
+        <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#LocatedAnnouncement" />
+        <cb:simpleTitle>Aktuelle Wirtschaftslage und Geldpolitik</cb:simpleTitle>
+        <cb:occurrenceDate>2026-07-08T16:30:00Z</cb:occurrenceDate>
+        <cb:institutionAbbrev>SNB</cb:institutionAbbrev>
+        <cb:resource rdf:parseType="Resource">
+          <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Resource" />
+          <cb:title>Aktuelle Wirtschaftslage und Geldpolitik</cb:title>
+          <cb:link>https://www.snb.ch/en/publications/communication/speeches/2026/ref_20260708_msl</cb:link>
+        </cb:resource>
+        <cb:person rdf:parseType="Resource">
+          <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Person" />
+          <cb:nameAsWritten>Martin Schlegel</cb:nameAsWritten>
+          <cb:role rdf:parseType="Resource">
+            <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Role" />
+            <cb:jobTitle>Chairman of the Governing Board</cb:jobTitle>
+          </cb:role>
+        </cb:person>
+        <cb:venue>Swiss Risk Association, Zurich</cb:venue>
+      </cb:speech>
+      <dc:date>2026-07-08T16:30:00Z</dc:date>
+      <dc:language>en</dc:language>
+    </item>
+    <item>
+      <title>WP - 2026-07-08 - Diego M. Hager and Samuel Reynard: Forecasts, nowcasts and monetary policy lags</title>
+      <link>https://www.snb.ch/en/publications/research/working-papers/2026/working_paper_2026_08</link>
+      <description>We present a microfounded information mechanism that causes monetary policy transmission lags to be endogenously variable, even when firms are rational and face no exogenous costs of changing prices. Firms must form two distinct expectations, namely, a forecast of future demand and a nowcast of the current unobserved state, because information arrives at different frequencies. We model this setting as a partial-equilibrium, continuous-time optimal stopping problem in which firms receive a continuous noisy signal and a discrete precise signal. Because exercising the timing option to reprice has a sunk opportunity cost, an endogenous inaction region emerges; firms rationally delay adjustment until the discrete signal provides sufficient actionable information. The resulting dynamics reproduce observed Swiss price-adjustment patterns and the highly variable transmission lags of monetary policy. Thus, the framework provides a rational-agent microfoundation for lag heterogeneity.</description>
+      <guid>https://www.snb.ch/en/publications/research/working-papers/2026/working_paper_2026_08</guid>
+      <cb:paper rdf:parseType="Resource">
+        <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Paper" />
+        <cb:simpleTitle>Forecasts, nowcasts and monetary policy lags</cb:simpleTitle>
+        <cb:occurrenceDate>2026-07-07T22:00:00Z</cb:occurrenceDate>
+        <cb:institutionAbbrev>SNB</cb:institutionAbbrev>
+        <cb:keyword>Information frictions</cb:keyword>
+        <cb:keyword>State-dependent pricing</cb:keyword>
+        <cb:keyword>Monetary policy lags</cb:keyword>
+        <cb:resource rdf:parseType="Resource">
+          <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Resource" />
+          <cb:title>Forecasts, nowcasts and monetary policy lags</cb:title>
+          <cb:link>https://www.snb.ch/en/publications/research/working-papers/2026/working_paper_2026_08</cb:link>
+          <cb:description>We present a microfounded information mechanism that causes monetary policy transmission lags to be endogenously variable, even when firms are rational and face no exogenous costs of changing prices. Firms must form two distinct expectations, namely, a forecast of future demand and a nowcast of the current unobserved state, because information arrives at different frequencies. We model this setting as a partial-equilibrium, continuous-time optimal stopping problem in which firms receive a continuous noisy signal and a discrete precise signal. Because exercising the timing option to reprice has a sunk opportunity cost, an endogenous inaction region emerges; firms rationally delay adjustment until the discrete signal provides sufficient actionable information. The resulting dynamics reproduce observed Swiss price-adjustment patterns and the highly variable transmission lags of monetary policy. Thus, the framework provides a rational-agent microfoundation for lag heterogeneity.</cb:description>
+        </cb:resource>
+        <cb:person rdf:parseType="Resource">
+          <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Person" />
+          <cb:givenName>Diego M.</cb:givenName>
+          <cb:surname>Hager</cb:surname>
+          <cb:nameAsWritten>Diego M. Hager</cb:nameAsWritten>
+        </cb:person>
+        <cb:person rdf:parseType="Resource">
+          <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Person" />
+          <cb:givenName>Samuel</cb:givenName>
+          <cb:surname>Reynard</cb:surname>
+          <cb:nameAsWritten>Samuel Reynard</cb:nameAsWritten>
+        </cb:person>
+        <cb:byline>Diego M. Hager and Samuel Reynard</cb:byline>
+        <cb:publicationDate>2026</cb:publicationDate>
+        <cb:publication>SNB Working Papers</cb:publication>
+        <cb:issue>2026-08</cb:issue>
+        <cb:JELCode>E31</cb:JELCode>
+        <cb:JELCode>E52</cb:JELCode>
+        <cb:JELCode>D84</cb:JELCode>
+      </cb:paper>
+      <dc:date>2026-07-07T22:00:00Z</dc:date>
+      <dc:language>en</dc:language>
+    </item>
+    <item>
+      <title>WP - 2026-07-07 - Andreas Bachmann and Elizabeth Steiner: Economy-wide capacity utilisation rate: Methodological framework and application to Swiss data</title>
+      <link>https://www.snb.ch/en/publications/research/working-papers/2026/working_paper_2026_07</link>
+      <description>The utilisation rate of technical capacity is a key indicator of an economy's cyclical position and plays a crucial role in the estimation of production functions. Despite its importance, economy-wide measures of capacity utilisation are often not available. Instead, single sector series, typically that for manufacturing, are used as a proxy. However, this approach overlooks the heterogeneity of sectoral developments. Using Swiss data, we develop a methodology to estimate a series of aggregate capacity utilisation. Our measure covers eleven sectors, accounting for two thirds of the economy, and is mostly based on survey data retropolated back to Q1 1995. The sectoral shares of the capital stock are used to aggregate the sectoral capacity utilisation series. Several evaluations show that our aggregate series provides valuable information for the analysis of overall economic activity and is superior to the use of manufacturing capacity utilisation. Our methodology can serve as a basis for the construction of an aggregate capacity utilisation rate series for other countries.</description>
+      <guid>https://www.snb.ch/en/publications/research/working-papers/2026/working_paper_2026_07</guid>
+      <cb:paper rdf:parseType="Resource">
+        <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Paper" />
+        <cb:simpleTitle>Economy-wide capacity utilisation rate: Methodological framework and application to Swiss data</cb:simpleTitle>
+        <cb:occurrenceDate>2026-07-06T22:00:00Z</cb:occurrenceDate>
+        <cb:institutionAbbrev>SNB</cb:institutionAbbrev>
+        <cb:keyword>Capacity utilisation</cb:keyword>
+        <cb:keyword>Business cycle indicator</cb:keyword>
+        <cb:keyword>Aggregation</cb:keyword>
+        <cb:keyword>Switzerland</cb:keyword>
+        <cb:resource rdf:parseType="Resource">
+          <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Resource" />
+          <cb:title>Economy-wide capacity utilisation rate: Methodological framework and application to Swiss data</cb:title>
+          <cb:link>https://www.snb.ch/en/publications/research/working-papers/2026/working_paper_2026_07</cb:link>
+          <cb:description>The utilisation rate of technical capacity is a key indicator of an economy's cyclical position and plays a crucial role in the estimation of production functions. Despite its importance, economy-wide measures of capacity utilisation are often not available. Instead, single sector series, typically that for manufacturing, are used as a proxy. However, this approach overlooks the heterogeneity of sectoral developments. Using Swiss data, we develop a methodology to estimate a series of aggregate capacity utilisation. Our measure covers eleven sectors, accounting for two thirds of the economy, and is mostly based on survey data retropolated back to Q1 1995. The sectoral shares of the capital stock are used to aggregate the sectoral capacity utilisation series. Several evaluations show that our aggregate series provides valuable information for the analysis of overall economic activity and is superior to the use of manufacturing capacity utilisation. Our methodology can serve as a basis for the construction of an aggregate capacity utilisation rate series for other countries.</cb:description>
+        </cb:resource>
+        <cb:person rdf:parseType="Resource">
+          <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Person" />
+          <cb:givenName>Andreas</cb:givenName>
+          <cb:surname>Bachmann</cb:surname>
+          <cb:nameAsWritten>Andreas Bachmann</cb:nameAsWritten>
+        </cb:person>
+        <cb:person rdf:parseType="Resource">
+          <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Person" />
+          <cb:givenName>Elizabeth</cb:givenName>
+          <cb:surname>Steiner</cb:surname>
+          <cb:nameAsWritten>Elizabeth Steiner</cb:nameAsWritten>
+        </cb:person>
+        <cb:byline>Andreas Bachmann and Elizabeth Steiner</cb:byline>
+        <cb:publicationDate>2026</cb:publicationDate>
+        <cb:publication>SNB Working Papers</cb:publication>
+        <cb:issue>2026-07</cb:issue>
+        <cb:JELCode>E22</cb:JELCode>
+        <cb:JELCode>E30</cb:JELCode>
+        <cb:JELCode>C43</cb:JELCode>
+      </cb:paper>
+      <dc:date>2026-07-06T22:00:00Z</dc:date>
+      <dc:language>en</dc:language>
+    </item>
+    <item>
+      <title>2026-07-07 - Data portal - Exchange rate indices, July 2026</title>
+      <link>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260707_wki</link>
+      <guid>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260707_wki</guid>
+      <cb:news rdf:parseType="Resource">
+        <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Announcement" />
+        <cb:simpleTitle>Exchange rate indices, July 2026</cb:simpleTitle>
+        <cb:occurrenceDate>2026-07-07T07:00:00Z</cb:occurrenceDate>
+        <cb:institutionAbbrev>SNB</cb:institutionAbbrev>
+        <cb:resource rdf:parseType="Resource">
+          <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Resource" />
+          <cb:title>Exchange rate indices, July 2026</cb:title>
+          <cb:link>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260707_wki</cb:link>
+        </cb:resource>
+      </cb:news>
+      <dc:date>2026-07-07T07:00:00Z</dc:date>
+      <dc:language>en</dc:language>
+    </item>
+    <item>
+      <title>2026-07-07 - Data portal - IMF SDDS Plus, 7 July 2026</title>
+      <link>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260707_sddsplus</link>
+      <guid>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260707_sddsplus</guid>
+      <cb:news rdf:parseType="Resource">
+        <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Announcement" />
+        <cb:simpleTitle>IMF SDDS Plus, 7 July 2026</cb:simpleTitle>
+        <cb:occurrenceDate>2026-07-07T07:00:00Z</cb:occurrenceDate>
+        <cb:institutionAbbrev>SNB</cb:institutionAbbrev>
+        <cb:resource rdf:parseType="Resource">
+          <rdf:type rdf:resource="http://www.cbwiki.net/wiki/index.php/RSS-CB_1.2_RDF_Schema#Resource" />
+          <cb:title>IMF SDDS Plus, 7 July 2026</cb:title>
+          <cb:link>https://www.snb.ch/en/publications/statistical-publications/data-portal/2026/07/statpub_news_20260707_sddsplus</cb:link>
+        </cb:resource>
+      </cb:news>
+      <dc:date>2026-07-07T07:00:00Z</dc:date>
+      <dc:language>en</dc:language>
+    </item>
+  </channel>
+</rss>
