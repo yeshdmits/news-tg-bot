@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Neutrality guard: fail if the tracked tree re-acquires operator-specific
-# values. Runs in CI on every push (see .github/workflows/docker.yml) and
+# values. Runs in CI on every push (see .github/workflows/pipeline.yml) and
 # locally via ./scripts/check-neutral.sh. Patterns live in
 # scripts/neutral-patterns.txt; the rules below are structural.
 set -euo pipefail

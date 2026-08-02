@@ -1,10 +1,13 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=68", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "news-tg-bot"
-version = "0.1.0"
+# The version is not tracked in any file: it is derived from the v* git tags
+# (setuptools-scm), which CI creates on merge to main from the Conventional
+# Commit history — see docs/releasing.md and ADR 0009.
+dynamic = ["version"]
 description = "Spec-driven RSS news bot with a PostgreSQL archive"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -29,6 +32,22 @@ export = ["pyarrow>=16"]
 [tool.setuptools]
 packages = ["feedspec", "fetcher", "archive", "newsbot"]
 py-modules = ["cli", "specsource"]
+
+[tool.setuptools_scm]
+# Used when building without git metadata (e.g. from a source archive). The
+# Docker build passes the real version via
+# SETUPTOOLS_SCM_PRETEND_VERSION_FOR_NEWS_TG_BOT instead.
+fallback_version = "0.0.0"
+
+[tool.commitizen]
+# Version analysis for the release pipeline (.github/scripts/compute-release.sh).
+# The current version is read from the v* git tags, never from a file.
+# major_version_zero is deliberately NOT set here: the release script passes
+# --major-version-zero on the CLI only while the latest tag is v0.*, so
+# breaking changes bump minor pre-1.0 and major afterwards.
+name = "cz_conventional_commits"
+version_provider = "scm"
+tag_format = "v$version"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

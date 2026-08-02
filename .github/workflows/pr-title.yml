@@ -1,0 +1,49 @@
+name: PR title
+
+# This repository squash-merges, so the PR title becomes the commit message
+# on main — and is the only thing the release pipeline's version analyser
+# sees. This check validates it as a Conventional Commit with the same tool
+# (commitizen) and configuration the release job uses.
+#
+# It is a required status check on main. It runs on fork PRs and needs no
+# secrets. `edited` is in the trigger list so retitling a PR re-validates.
+#
+# Note for breaking changes: a "BREAKING CHANGE:" footer must go into the
+# squash commit BODY at merge time (or use `type!:` in the title itself) —
+# see CONTRIBUTING.md.
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions: {}
+
+jobs:
+  pr-title:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (for the commitizen config in pyproject.toml)
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install commitizen
+        run: pip install 'commitizen==4.*'
+
+      - name: Validate the PR title as a Conventional Commit
+        env:
+          # Via env, never inline — a PR title is untrusted input.
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if ! cz check --message "$TITLE"; then
+            echo
+            echo "PR titles must be Conventional Commits, e.g.:"
+            echo "  feat: add per-channel quiet hours       -> minor release"
+            echo "  fix: escape markdown in titles          -> patch release"
+            echo "  feat!: drop spec format v1              -> breaking (major; minor while 0.x)"
+            echo "  docs: / chore: / ci: / test: / refactor: -> no release"
+            exit 1
+          fi

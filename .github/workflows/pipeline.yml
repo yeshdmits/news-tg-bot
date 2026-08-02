@@ -1,29 +1,42 @@
-name: Build, Test & Push Docker Image
+name: Pipeline
 
-# Release-driven, fork-friendly by design:
+# Merge-driven releases, fork-friendly by design:
 #   - test + neutrality guard run on every push and PR with zero secrets;
 #     PRs also build the image without publishing it;
-#   - every push to main publishes the image as <short-sha> and latest, so
-#     latest always tracks the newest main commit — but does NOT deploy;
-#   - a v* tag (created by release-please when a release PR merges;
-#     Conventional Commits decide the version: feat → minor, fix → patch,
-#     breaking → major, docs/chore/ci/etc → no release, Release-As footer
-#     overrides) additionally publishes the release-version image tag and
-#     is the only trigger that deploys;
+#   - after a push to main, the release job reads the Conventional Commits
+#     since the last v* tag (feat -> minor, fix -> patch, breaking -> major
+#     but minor while 0.x, docs/chore/ci/etc -> nothing, "Release-As: X.Y.Z"
+#     footer overrides) and, when a release is due, creates the v* tag and
+#     the GitHub Release in this same run;
 #   - the image goes to ghcr.io/<this repo> with the built-in GITHUB_TOKEN
 #     unless vars.IMAGE_NAME points elsewhere (then registry credentials
-#     come from secrets);
-#   - deploy runs only when the deploy repository variables are set, so a
-#     fresh fork skips it with a message instead of failing.
+#     come from secrets); every main push publishes the commit-sha tag, a
+#     release additionally publishes X.Y.Z, X.Y, X and latest;
+#   - deploy runs only for releases, and only when the deploy repository
+#     variables are set, so a fresh fork skips it with a message instead of
+#     failing.
+#
+# Everything runs as sequential jobs of THIS workflow — release, then build,
+# then deploy — because tags and releases created with the built-in
+# GITHUB_TOKEN do not trigger other workflows. A separate workflow on
+# `push: tags` or `release: published` would never fire. Do not split it.
+# See docs/adr/0009-tag-on-merge-releases.md before changing the shape.
+#
 # Never use pull_request_target here — it would run untrusted PR code with
 # repository secrets in scope.
 
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
     branches: [main]
+
+# Two quick merges must not interleave: the second run would compute its
+# version before the first has tagged. Main-branch runs queue instead
+# (cancel-in-progress only for superseded PR pushes).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   # Repository variable IMAGE_NAME overrides (e.g. docker.io/<user>/<repo>);
@@ -63,6 +76,9 @@ jobs:
     env:
       TEST_DATABASE_URL: postgresql://newsbot:newsbot@localhost:5432/newsbot_test
       TZ: UTC
+      # The real version comes from git tags (setuptools-scm); the shallow
+      # CI checkout has none, and tests don't care about the version.
+      SETUPTOOLS_SCM_PRETEND_VERSION_FOR_NEWS_TG_BOT: "0.0.0"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -85,9 +101,62 @@ jobs:
       - name: Run tests
         run: pytest
 
+  release:
+    # Decides from the commits since the last v* tag whether this merge
+    # releases, and creates the tag + GitHub Release when it does. No file
+    # in the repository records the version (see ADR 0009), so nothing is
+    # committed back to main — which is also what keeps this loop-free.
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    needs: [check-neutral, test]
+    permissions:
+      contents: write
+    outputs:
+      released: ${{ steps.decide.outputs.released }}
+      version: ${{ steps.decide.outputs.version }}
+    steps:
+      - name: Checkout (full history — the version is derived from tags)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install commitizen
+        run: pip install 'commitizen==4.*'
+
+      - name: Compute next version
+        id: decide
+        run: ./.github/scripts/compute-release.sh
+
+      - name: Create tag and GitHub Release
+        if: steps.decide.outputs.released == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.decide.outputs.version }}
+        # One API call creates the tag and the Release together, so a "tag
+        # without release" half-state cannot occur. Release notes are
+        # generated from the merged PRs; there is no tracked changelog.
+        run: >-
+          gh release create "v$VERSION"
+          --target "$GITHUB_SHA"
+          --title "v$VERSION"
+          --generate-notes
+
   build-and-push:
     runs-on: ubuntu-latest
-    needs: [check-neutral, test]
+    needs: [check-neutral, test, release]
+    # `release` is skipped on pull requests; still build there (without
+    # pushing) to prove the Dockerfile.
+    if: >-
+      !cancelled()
+      && needs.check-neutral.result == 'success'
+      && needs.test.result == 'success'
+      && (needs.release.result == 'success'
+          || (github.event_name == 'pull_request' && needs.release.result == 'skipped'))
     permissions:
       contents: read
       packages: write
@@ -119,12 +188,17 @@ jobs:
 
       - name: Extract image metadata
         id: meta
+        # The immutable sha tag is published on every main push. The
+        # version tags and latest move only on a release — a non-release
+        # push must not move latest.
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
-            type=semver,pattern={{version}}
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}},value=v${{ needs.release.outputs.version || '0.0.0' }},enable=${{ needs.release.outputs.released == 'true' }}
+            type=semver,pattern={{major}}.{{minor}},value=v${{ needs.release.outputs.version || '0.0.0' }},enable=${{ needs.release.outputs.released == 'true' }}
+            type=semver,pattern={{major}},value=v${{ needs.release.outputs.version || '0.0.0' }},enable=${{ needs.release.outputs.released == 'true' }}
+            type=raw,value=latest,enable=${{ needs.release.outputs.released == 'true' }}
             type=sha,prefix=
 
       - name: Build and push
@@ -132,6 +206,8 @@ jobs:
         with:
           context: .
           push: ${{ github.event_name == 'push' }}
+          build-args: |
+            APP_VERSION=${{ needs.release.outputs.released == 'true' && needs.release.outputs.version || format('0.0.0+{0}', github.sha) }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
@@ -139,18 +215,19 @@ jobs:
 
   deploy:
     runs-on: ubuntu-latest
-    needs: build-and-push
-    # Deploys only from v* release tags — the same gate as the image push,
-    # since the version-tagged image only exists in the registry for
-    # releases — and only when the deploy target is configured via
-    # repository variables, so forks skip this instead of failing. Topology
-    # lives in deploy/terraform (applied manually); this job only swaps
-    # images.
+    needs: [release, build-and-push]
+    # Deploys only for releases — the version-tagged image only exists in
+    # the registry for releases — and only when the deploy target is
+    # configured via repository variables, so forks skip this instead of
+    # failing. Topology lives in deploy/terraform (applied manually); this
+    # job only swaps images.
     # Ordering below is load-bearing: the migrate job must reach Succeeded
     # before either consumer sees the new image, because the new code may
     # depend on the new schema — do not parallelise the steps.
     if: >-
-      github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+      !cancelled()
+      && needs.build-and-push.result == 'success'
+      && needs.release.outputs.released == 'true'
       && vars.AZURE_RESOURCE_GROUP != '' && vars.NAME_PREFIX != ''
     # Two rapid merges must not race each other through migrate/rollout.
     concurrency:
@@ -162,6 +239,7 @@ jobs:
     env:
       AZ_RG: ${{ vars.AZURE_RESOURCE_GROUP }}
       PREFIX: ${{ vars.NAME_PREFIX }}
+      VERSION: ${{ needs.release.outputs.version }}
     steps:
       - name: Log in to Azure
         uses: azure/login@v2
@@ -172,7 +250,7 @@ jobs:
 
       - name: Run migration job
         run: |
-          IMAGE=${{ env.IMAGE_NAME }}:${GITHUB_REF_NAME#v}
+          IMAGE=${{ env.IMAGE_NAME }}:$VERSION
           az containerapp job update -n "$PREFIX-migrate" -g "$AZ_RG" --image "$IMAGE"
           az containerapp job start  -n "$PREFIX-migrate" -g "$AZ_RG"
 
@@ -192,21 +270,23 @@ jobs:
 
       - name: Update fetch job and webhook app
         run: |
-          IMAGE=${{ env.IMAGE_NAME }}:${GITHUB_REF_NAME#v}
+          IMAGE=${{ env.IMAGE_NAME }}:$VERSION
           az containerapp job update -n "$PREFIX-fetch" -g "$AZ_RG" --image "$IMAGE"
           az containerapp update     -n "$PREFIX-bot"   -g "$AZ_RG" --image "$IMAGE"
 
   deploy-skipped:
     runs-on: ubuntu-latest
-    needs: build-and-push
+    needs: [release, build-and-push]
     if: >-
-      github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+      !cancelled()
+      && needs.build-and-push.result == 'success'
+      && needs.release.outputs.released == 'true'
       && (vars.AZURE_RESOURCE_GROUP == '' || vars.NAME_PREFIX == '')
     steps:
       - name: Explain how to enable deploys
         run: |
           echo "Deploy skipped: no target configured (this is expected on a fresh fork)."
-          echo "Build, tests and image publish completed."
+          echo "Build, tests, image publish and the GitHub Release completed."
           echo
           echo "To enable Azure deploys, set repository variables:"
           echo "  NAME_PREFIX           - your Terraform name_prefix (e.g. myproject)"

@@ -1,6 +1,8 @@
 # Changelog
 
-All notable changes to this project are documented in this file.
+**This file is frozen at 0.1.0.** Notes for every later release are
+generated automatically on this repository's GitHub Releases page when a
+merge to `main` cuts a release — see `docs/releasing.md`.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -11,8 +13,6 @@ interface may change between minor releases.
 The configuration format (`spec.json`) is versioned independently via its
 `version` field; changes to it are called out in the entry for the release
 that made them.
-
-## [Unreleased]
 
 ## [0.1.0] — 2026-08-02
 
@@ -78,5 +78,4 @@ First public release.
   clouds), troubleshooting, architecture decision records, contribution and
   security policies. MIT license.
 
-[Unreleased]: https://github.com/OWNER/REPO/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/OWNER/REPO/releases/tag/v0.1.0
