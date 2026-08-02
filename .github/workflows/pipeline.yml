@@ -12,9 +12,9 @@ name: Build, Test & Push Docker Image
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
-    branches: [main, develop]
+    branches: [main]
 
 env:
   # Repository variable IMAGE_NAME overrides (e.g. docker.io/<user>/<repo>);
