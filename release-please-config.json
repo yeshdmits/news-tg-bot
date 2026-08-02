@@ -6,7 +6,8 @@
       "package-name": "news-tg-bot",
       "include-component-in-tag": false,
       "include-v-in-tag": true,
-      "bump-minor-pre-major": true
+      "bump-minor-pre-major": true,
+      "skip-changelog": true
     }
   }
 }
