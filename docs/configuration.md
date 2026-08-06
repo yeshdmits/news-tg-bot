@@ -129,7 +129,7 @@ A channel is a Telegram chat plus its posting knobs.
 | `name` | str | **required** | Unique source key; also the archive key and hashtag base. |
 | `url` | str | **required** | Feed URL. |
 | `language` | str | **required** | Feed language; compared to channel language to decide translation. |
-| `channels` | list of bindings | **required, ≥ 1** | See [Bindings](#bindings-sourceschannels). |
+| `channels` | list of bindings | **required** (may be empty) | See [Bindings](#bindings-sourceschannels). An empty list makes the source [archive-only](#archive-only-sources). The key itself is mandatory — a dropped one is an error, not a silent mute. |
 | `mapping` | object | **required** | See [Mapping](#mapping-sourcesmapping). |
 | `type` | `"xml"` | `"xml"` | Only XML feeds are implemented. |
 | `kind` | `"general_news"` \| `"central_bank"` \| `"statistics"` \| `"press_wire"` \| `"exchange"` | `"general_news"` | Taxonomy used by `when.source_kinds` predicates. |
@@ -162,6 +162,55 @@ A binding attaches a source to one channel with per-pair filtering.
 the chat, not of one source's relationship to it — a binding declaring one
 fails at load with a message naming the source, channel, and key (see
 [Rejected examples](#rejected-examples)).
+
+### Archive-only sources
+
+`"channels": []` is valid and means **fetch it, keep it, never post it**. The
+source is polled on its interval, parsed, deduped, and stored in `items` with
+its raw XML like any other — it simply produces no routing decisions and no
+deliveries. Use it to evaluate a feed before wiring it to a chat, to build a
+corpus for `cli export`, or for a signal you never intend to republish.
+
+```json
+{
+  "name": "example-wire",
+  "url": "https://wire.example.org/feed.xml",
+  "language": "en",
+  "cold_start_policy": "skip_all",
+  "mapping": { "items": "//item", "id": "guid", "title": "title", "url": "link" },
+  "channels": []
+}
+```
+
+Three things to know:
+
+- The `channels` key stays **required**. Archive-only must be declared with an
+  explicit `[]`; omitting the key is still a load error, so a typo can never
+  quietly stop a source from posting.
+- The effective `cold_start_policy` must be `skip_all`. `post_newest:N` only
+  controls posting, so on an archive-only source it provably does nothing, and
+  the loader refuses it rather than let it read as if the first fetch would
+  publish something. This is checked *after* `defaults` are applied — under a
+  spec-wide `defaults.cold_start_policy: "post_newest:N"` you must set
+  `"cold_start_policy": "skip_all"` on the archive-only source itself.
+- **Binding a channel later routes only new items.** Routing decisions are
+  written when an item is first stored, so items archived while the source was
+  unbound stay unposted forever. That is deliberate — it stops a backlog of
+  months-old items flooding a chat the moment you wire it up.
+
+Going the other way — emptying the `channels` list of a source that was posting —
+is safe too: items already routed but not yet sent are retired with a
+`channel_disabled` decision (reason `binding removed from spec`) on the next run
+rather than posted.
+
+`cli validate` names these sources explicitly:
+
+```
+example-wire (general_news, en, every 15 min, limit 10, cold_start=skip_all)
+    -> (archive only — stored, never posted)
+
+OK: 5 sources (1 archive-only), 2 channels, 5 bindings
+```
 
 ### `when` predicates
 
@@ -374,7 +423,21 @@ channels.0.post_stile
   Extra inputs are not permitted [type=extra_forbidden, ...]
 ```
 
+A posting-only cold start on a source that never posts:
+
+```json
+{ "name": "example-wire", "channels": [], "cold_start_policy": "post_newest:2" }
+```
+
+```
+INVALID: source 'example-wire' has no channel bindings (archive-only) but
+cold_start_policy is 'post_newest:2', which only affects posting; set it to
+'skip_all'
+```
+
 Other load-time errors you can hit: duplicate channel names / chat ids /
 source names, a binding to an unknown channel, the same channel bound twice
-by one source, `errors.source_overrides` naming an unknown source, a spec
-that is not valid JSON, and a root that is not a JSON object.
+by one source, a source with no `channels` key at all (an empty list is how
+you declare [archive-only](#archive-only-sources)),
+`errors.source_overrides` naming an unknown source, a spec that is not valid
+JSON, and a root that is not a JSON object.

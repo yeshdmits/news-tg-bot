@@ -24,27 +24,34 @@ Work through these in order — each one is by design:
    error `dry_run` and nothing is sent. Locally: set `DRY_RUN=false` in
    `.env`. In Azure: `terraform apply -var dry_run=false` — never
    `az --set-env-vars` (see `docs/deployment/terraform.md`).
-2. **Cold start skips.** The default `cold_start_policy: skip_all` archives
+2. **The source has no channel bindings.** `"channels": []` makes a source
+   [archive-only](configuration.md#archive-only-sources): fetched and stored,
+   never routed. It looks perfectly healthy in `/status` and `cli stats`
+   because it *is* — it just has no `routing_decisions` rows at all.
+   `cli validate` marks these `-> (archive only — stored, never posted)`.
+   Note that adding a binding now only routes **new** items; anything already
+   archived stays unposted.
+3. **Cold start skips.** The default `cold_start_policy: skip_all` archives
    the entire first fetch of a new source without posting — the backlog of an
    old feed would otherwise flood the channel. Use `post_newest:3` if you
    want a new source to say something immediately.
-3. **The posting window is closed.** Each channel posts at most
+4. **The posting window is closed.** Each channel posts at most
    `max_posts_per_run` items every `post_interval_min` minutes. Items wait as
    `rate_limited` (`gated:` reason) until the next window — or are dropped if
    `queue_policy` is `drop_oldest` and the backlog exceeds the cap.
-4. **The source is not due.** Sources are fetched when `fetch_interval_min`
+5. **The source is not due.** Sources are fetched when `fetch_interval_min`
    has elapsed since the last fetch; the cron runs every 5 minutes but most
    sources fetch every 15+.
-5. **`fetch_lock_held_elsewhere_skipping` in the logs.** Another execution
+6. **`fetch_lock_held_elsewhere_skipping` in the logs.** Another execution
    holds the advisory lock; this one exits cleanly having done nothing.
    Normal under overlap; investigate only if it happens every run (a stuck
    long-running execution).
-6. **Items are filtered.** Check `routing_decisions` (or `cli stats`):
+7. **Items are filtered.** Check `routing_decisions` (or `cli stats`):
    `filtered_category`, `predicate_failed`, `too_old` and `duplicate` all
    mean the pipeline worked and said no. Remember: an **empty**
    `include_categories` list means "no filter" — it never means "include
    nothing".
-7. **The bot token is empty.** With `TELEGRAM_BOT_TOKEN` unset, sending is
+8. **The bot token is empty.** With `TELEGRAM_BOT_TOKEN` unset, sending is
    silently disabled everywhere; errors are still written to the database.
 
 ## Fetching problems

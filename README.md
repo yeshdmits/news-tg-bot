@@ -11,6 +11,10 @@ full audit trail of routing and delivery decisions, and failures don't page
 you blindly — they are fingerprinted, grouped, and alerted into an ops
 Telegram group with escalation, quiet hours, and `/ack` commands.
 
+Posting is optional per source: a feed with an empty `channels` list is
+[archive-only](docs/configuration.md#archive-only-sources) — fetched, parsed
+and stored, but never published.
+
 A post looks like this — real output of the formatter over a feed sample
 from the test fixtures (HTML sent to Telegram: bold title, truncated lead,
 a "Read more" link, per-source hashtags):

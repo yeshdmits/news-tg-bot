@@ -633,7 +633,7 @@
     },
     "SourceDef": {
       "additionalProperties": false,
-      "description": "A feed source: where and how often to fetch, how to map items,\nand the channel bindings that receive them.",
+      "description": "A feed source: where and how often to fetch, how to map items,\nand the channel bindings that receive them. An empty channels list\nmakes the source archive-only: fetched, parsed, stored and deduped,\nbut never routed or posted. The key itself stays required, so a\ndropped or misspelled one fails loudly instead of muting a source.",
       "properties": {
         "name": {
           "title": "Name",

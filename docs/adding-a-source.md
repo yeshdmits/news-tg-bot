@@ -102,6 +102,14 @@ Choices worth explaining:
 - **`when.keywords_any`** filters at the binding, so the same source could
   also feed an unfiltered channel with a second binding.
 
+If you do not have a channel for this feed yet — or want to watch what it
+publishes before pointing it at anyone — ship it with `"channels": []` and
+`"cold_start_policy": "skip_all"`. That makes it
+[archive-only](configuration.md#archive-only-sources): fetched, parsed and
+stored, never posted. Everything below still applies; only the routing lines
+disappear from the output. Add the binding whenever you are ready — but note
+it will route only items fetched *after* that, not the ones already archived.
+
 ## 2. Validate — offline, no credentials
 
 ```bash
@@ -160,6 +168,8 @@ the source is fetched on its interval.
 | Date missing on every item | Wrong `published_format`. Atom/ISO timestamps parse as garbage under the RFC 822 default; unparseable dates fall back to fetch time and raise `PublishedDateUnparseable` warnings. |
 | Lead full of markup | Set `lead_html: true`; use `lead_remove` regexes for boilerplate ("Read more…"). |
 | Everything works but nothing posts | See `docs/troubleshooting.md` — usually `DRY_RUN`, cold start, or the posting window. |
+| `validate` prints `-> (archive only …)` but you expected a channel | The source's `channels` list is empty. Add the binding; `validate` will then show the `-> channel` line. |
+| `… has no channel bindings (archive-only) but cold_start_policy is …` | `post_newest:N` only controls posting, so it cannot apply to an archive-only source. Set `"cold_start_policy": "skip_all"` on it explicitly (needed even when the value came from `defaults`). |
 
 If the feed publishes a schema, drop the XSD into `schemas/`, set
 `schema_file`, and format drift will surface as a `SchemaValidationFailed`

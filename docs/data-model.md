@@ -33,7 +33,7 @@ Postgres storage accordingly.
 | `items` | item first seen | `raw_xml` (bytea, NOT NULL), extracted fields, `canonical_url` (tracking params stripped), `content_hash`, `title_simhash`, `duplicate_of` self-reference, `copyright_holder`. `UNIQUE (source_name, source_item_id)` is the idempotency anchor: re-fetching the same feed inserts nothing new. |
 | `item_categories` | (item, ordinal) | Categories in feed order. |
 | `translations` | (content_hash, field, target_language) | Content-keyed translation cache — re-runs and duplicates never re-bill the provider. |
-| `routing_decisions` | (item, channel) | Exactly one decision per item per bound channel: `routed`, `filtered_category`, `predicate_failed`, `too_old`, `duplicate`, `channel_disabled`, `cold_start_skip`, or `rate_limited` (with a `reason`; `gated:` reasons are re-evaluated next window, others are terminal). |
+| `routing_decisions` | (item, channel) | Exactly one decision per item per bound channel: `routed`, `filtered_category`, `predicate_failed`, `too_old`, `duplicate`, `channel_disabled`, `cold_start_skip`, or `rate_limited` (with a `reason`; `gated:` reasons are re-evaluated next window, others are terminal). An [archive-only](configuration.md#archive-only-sources) source has no bound channels and so produces **no** rows here — its items are stored with no decision trail at all. `channel_disabled` doubles as the retirement state for a decision whose binding has since disappeared from the spec, carrying the reason `binding removed from spec`. |
 | `deliveries` | (item, channel) | `sent` / `failed` / `skipped` with attempt count, Telegram message id, error. Dry-run posts are recorded as `skipped` with error `dry_run`. |
 
 ### Operational state (0001)

@@ -219,6 +219,30 @@
         "copyright": "copyright"
       },
       "notes": "Ships disabled on purpose: the EUR/USD reference-rate feed is RDF, so this mapping has not been verified against a capture yet. The url_verified: null warning from `validate` is the reminder. Capture the feed, adjust the mapping, set url_verified and enabled: true."
+    },
+    {
+      "name": "fed-speeches",
+      "kind": "central_bank",
+      "region": "US",
+      "type": "xml",
+      "url": "https://www.federalreserve.gov/feeds/speeches.xml",
+      "url_verified": "2026-08-06",
+      "language": "en",
+      "fetch_limit": 10,
+      "fetch_interval_min": 60,
+      "cold_start_policy": "skip_all",
+      "channels": [],
+      "mapping": {
+        "items": "channel/item",
+        "id": "guid",
+        "title": "title",
+        "lead": ["description", "title"],
+        "url": "link",
+        "published": "pubDate",
+        "published_format": "rfc822",
+        "category": "category"
+      },
+      "notes": "Archive-only: the empty channels list means this feed is fetched, parsed, deduped and stored like any other, but never posted anywhere. Use it to evaluate a feed before wiring it to a chat, or to build a corpus for `cli export`. cold_start_policy must be skip_all here — post_newest:N only affects posting. Adding a binding later routes only newly-fetched items, never the ones already archived."
     }
   ]
 }

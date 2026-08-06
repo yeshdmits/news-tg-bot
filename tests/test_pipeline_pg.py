@@ -308,3 +308,103 @@ async def test_dry_run_records_skipped_and_stays_idempotent(db, tmp_path):
     again = await run_once(deps)
     assert again.posted == 0
     assert db.execute("SELECT count(*) AS n FROM deliveries").fetchone()["n"] == 2
+
+
+async def test_archive_only_source_stores_but_never_routes(db, tmp_path):
+    """A source with no bindings is fetched, parsed and archived like any
+    other, but produces no routing decisions and nothing is posted for it —
+    while a bound source in the same spec posts normally."""
+    spec_dict = custom_spec()
+    spec_dict["sources"][0]["channels"] = []            # swissinfo: archive-only
+    spec_dict["sources"][0]["cold_start_policy"] = "skip_all"
+    spec_dict["sources"][1]["cold_start_policy"] = "post_newest:2"  # blick still posts
+    loaded = write_test_spec(tmp_path, spec_dict)
+    deps, telegram = make_deps(db, loaded, CUSTOM_URL_MAP)
+
+    stats = await run_once(deps)
+
+    # archived: items and a fetch row exist for the unbound source
+    assert db.execute(
+        "SELECT count(*) AS n FROM items WHERE source_name = 'swissinfo'"
+    ).fetchone()["n"] > 0
+    assert db.execute(
+        "SELECT count(*) AS n FROM fetches WHERE source_name = 'swissinfo'"
+    ).fetchone()["n"] == 1
+
+    # but never routed — not even a cold_start_skip or filtered decision
+    assert db.execute(
+        """
+        SELECT count(*) AS n FROM routing_decisions rd
+        JOIN items i ON i.item_id = rd.item_id
+        WHERE i.source_name = 'swissinfo'
+        """
+    ).fetchone()["n"] == 0
+    assert db.execute(
+        """
+        SELECT count(*) AS n FROM deliveries d
+        JOIN items i ON i.item_id = d.item_id
+        WHERE i.source_name = 'swissinfo'
+        """
+    ).fetchone()["n"] == 0
+
+    # the bound source is unaffected
+    assert stats.posted == 2
+    assert len(telegram.calls) == 2
+    posted_sources = {
+        r["source_name"]
+        for r in db.execute(
+            "SELECT DISTINCT i.source_name FROM deliveries d JOIN items i USING (item_id)"
+        )
+    }
+    assert posted_sources == {"blick"}
+
+
+async def test_binding_removed_retires_stale_backlog_without_crashing(db, tmp_path):
+    """Routing decisions outlive the spec that made them: the backlog is keyed
+    by channel alone. Turning a bound source archive-only must retire its
+    orphaned backlog terminally, not raise KeyError mid-post-phase."""
+    spec_dict = custom_spec(
+        queue_policy="drain_all", post_interval_min=0, max_posts_per_run=2
+    )
+    loaded = write_test_spec(tmp_path, spec_dict)
+    deps, telegram = make_deps(db, loaded, CUSTOM_URL_MAP)
+
+    first = await run_once(deps)
+    assert first.posted == 2
+    backlog = db.execute(
+        """
+        SELECT count(*) AS n FROM routing_decisions rd
+        LEFT JOIN deliveries d ON d.item_id = rd.item_id
+        WHERE rd.decision = 'routed' AND d.item_id IS NULL
+        """
+    ).fetchone()["n"]
+    assert backlog == 1  # 3 cold-start eligible − 2 posted
+
+    # same spec, swissinfo unbound — its backlog now has no binding to post under
+    spec_dict["sources"][0]["channels"] = []
+    spec_dict["sources"][0]["cold_start_policy"] = "skip_all"
+    deps.loaded = write_test_spec(tmp_path, spec_dict)
+    reset_fetch_timers(db)
+
+    second = await run_once(deps)  # must not raise
+
+    assert second.posted == 0
+    assert len(telegram.calls) == 2  # nothing new sent
+    assert db.execute(
+        """
+        SELECT count(*) AS n FROM routing_decisions
+        WHERE decision = 'channel_disabled' AND reason = 'binding removed from spec'
+        """
+    ).fetchone()["n"] == 1
+
+    # terminal, so the row is gone from the backlog for good
+    reset_fetch_timers(db)
+    third = await run_once(deps)
+    assert third.posted == 0
+    assert db.execute(
+        """
+        SELECT count(*) AS n FROM routing_decisions rd
+        LEFT JOIN deliveries d ON d.item_id = rd.item_id
+        WHERE rd.decision = 'routed' AND d.item_id IS NULL
+        """
+    ).fetchone()["n"] == 0

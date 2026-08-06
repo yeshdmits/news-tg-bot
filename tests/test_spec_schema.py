@@ -66,6 +66,7 @@ def test_example_demonstrates_the_feature_surface():
         '"enabled": false',
         '"include_categories"',
         '"max_age_min": null,',
+        '"channels": [],',  # an archive-only source
         '"statistics"',
         '"ops_topic_id": 42',
         '"write_allowlist": [999900001]',
