@@ -15,7 +15,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 SourceKind = Literal["general_news", "central_bank", "statistics", "press_wire", "exchange"]
-PostStyle = Literal["photo_full", "link_preview", "text_only"]
+PostStyle = Literal["photo_full", "link_preview", "link_preview_title_only", "text_only"]
 QueuePolicy = Literal["drop_oldest", "drain_all"]
 
 _COLD_START_RE = re.compile(r"^(skip_all|post_newest:[1-9]\d*)$")

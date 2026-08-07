@@ -156,7 +156,7 @@
       "fetch_limit": 10,
       "fetch_interval_min": 5,
       "cold_start_policy": "post_newest:1",
-      "channels": [{ "name": "econ-en", "lead_max_length": 400 }],
+      "channels": [{ "name": "econ-en", "post_style": "link_preview_title_only" }],
       "schema_file": null,
       "mapping": {
         "items": "channel/item",
@@ -167,7 +167,7 @@
         "published": "pubDate",
         "published_format": "rfc822"
       },
-      "notes": "Overlaps fed-press-all by design; global dedupe collapses them. cold_start_policy post_newest:1 posts the single newest item on first fetch instead of skipping the backlog. The lead is a fallback list: first matching expression wins."
+      "notes": "Overlaps fed-press-all by design; global dedupe collapses them. cold_start_policy post_newest:1 posts the single newest item on first fetch instead of skipping the backlog. The lead is a fallback list: first matching expression wins — and because that fallback is the title, this binding uses post_style link_preview_title_only to post the headline plus Telegram's preview and skip the lead entirely."
     },
     {
       "name": "snb-press",

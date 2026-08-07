@@ -119,7 +119,7 @@ A channel is a Telegram chat plus its posting knobs.
 | `max_posts_per_run` | int | `5` | Batch cap per posting window, across **all** sources bound to the chat. |
 | `max_age_min` | int \| null | `null` | Items older than this at posting time become `too_old`. `null` = no age limit. |
 | `queue_policy` | `"drop_oldest"` \| `"drain_all"` | `"drop_oldest"` | What happens to backlog beyond the cap: dropped permanently, or deferred to the next window. |
-| `post_style` | `"link_preview"` \| `"photo_full"` \| `"text_only"` | `"link_preview"` | How posts render. `photo_full` falls back to a text post when the item has no image. |
+| `post_style` | `"link_preview"` \| `"link_preview_title_only"` \| `"photo_full"` \| `"text_only"` | `"link_preview"` | How posts render — see below. |
 | `enabled` | bool | `true` | Disabled channels record `channel_disabled` decisions and post nothing. |
 
 ### Sources (`sources[]`)
@@ -156,6 +156,28 @@ A binding attaches a source to one channel with per-pair filtering.
 | `translate_lead` | bool | `false` | Translate title+lead into the channel language when languages differ. |
 | `post_style` | style \| null | `null` | Override; `null` inherits from the channel. |
 | `when` | object \| null | `null` | Content predicate, see below. |
+
+### Post styles
+
+Every post carries the title, the "Read more" link and the source hashtags.
+The styles differ in what else goes out:
+
+| Style | Lead | Telegram link preview | Image |
+|---|---|---|---|
+| `link_preview` | yes | yes | — |
+| `link_preview_title_only` | **no** | yes | — |
+| `photo_full` | yes | no (the image replaces it) | posted as a photo with the text as its caption |
+| `text_only` | yes | **no** | — |
+
+`link_preview_title_only` posts the headline and lets Telegram's preview carry
+the context. It is the right choice for feeds whose lead merely restates the
+title (a `lead_fallback: "title"` source, for instance) and anywhere you want
+to republish less of the publisher's text — see
+[legal.md](legal.md#configuration-that-changes-exposure). The lead is dropped
+before translation, so it costs no DeepL quota even with `translate_lead: true`.
+
+`photo_full` falls back to a text post when the item has no image, and that
+fallback behaves like `link_preview`, not like `text_only`.
 
 **Channel-scoped keys are rejected on bindings.** `id`,
 `post_interval_min`, `max_posts_per_run`, and `max_age_min` are properties of

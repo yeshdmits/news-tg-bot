@@ -92,6 +92,39 @@ def test_text_only_disables_preview():
     assert "Read more" in post.text  # the article link stays reachable
 
 
+def test_title_only_drops_the_lead_but_keeps_the_preview():
+    post = format_post(
+        make_record(), make_cfg(post_style="link_preview_title_only"),
+        RecordingTranslator(), make_source(),
+    )
+    title, footer = post.text.split("\n\n")
+    assert title == "<b>Ein Titel &lt;mit&gt; Winkeln</b>"
+    assert footer == '<a href="https://example.org/a?x=1">Read more</a> | #bbc_world #GLOBAL'
+    assert "Der Lead" not in post.text
+    assert post.link_preview is True
+
+
+def test_title_only_does_not_translate_the_lead():
+    """The lead is dropped before the translation step, so it costs no quota."""
+    translator = RecordingTranslator()
+    post = format_post(
+        make_record(), make_cfg(post_style="link_preview_title_only", translate_lead=True),
+        translator, make_source(),
+    )
+    assert translator.calls == ["title"]
+    assert post.text.startswith("<b>[en] Ein Titel")
+
+
+def test_title_only_stays_a_text_post_when_the_item_has_an_image():
+    post = format_post(
+        make_record(image_url="https://img.example.org/x.jpg"),
+        make_cfg(post_style="link_preview_title_only"), RecordingTranslator(), make_source(),
+    )
+    assert post.image_url is None
+    assert post.link_preview is True
+    assert "Der Lead" not in post.text
+
+
 def test_photo_full_uses_image_as_caption_post():
     record = make_record(image_url="https://img.example.org/x.jpg")
     post = format_post(record, make_cfg(post_style="photo_full"), RecordingTranslator(), make_source())

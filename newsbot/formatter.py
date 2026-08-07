@@ -11,6 +11,11 @@ Post structure:
 "Read more" is an HTML anchor to the article, so the raw URL never clutters
 the message; the hashtags come from the source's name and region, making
 posts filterable per outlet inside Telegram.
+
+The lead paragraph is the only optional one. It is absent when the feed
+supplies none, when it merely repeats the title, when the Telegram limit
+leaves no room for it, or when the style is ``link_preview_title_only`` —
+which posts the headline and Telegram's link preview, nothing else.
 """
 
 from __future__ import annotations
@@ -65,6 +70,10 @@ def format_post(
     chosen style (caption for photo_full with an image, message otherwise),
     and assemble the title/lead/footer HTML."""
     title, lead = item.title, item.lead_original
+    if cfg.post_style == "link_preview_title_only":
+        # Dropped here rather than at assembly: the translation below is
+        # guarded by `if lead`, so a lead nobody will read never costs quota.
+        lead = None
     if cfg.translate_lead and source.language.lower() != cfg.channel_language.lower():
         title = translator.translate_field(
             content_hash=item.content_hash, field="title", text=title,

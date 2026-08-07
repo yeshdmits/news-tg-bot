@@ -63,6 +63,7 @@ def test_example_demonstrates_the_feature_surface():
         '"when"',
         '"post_newest:1"',
         '"text_only"',
+        '"link_preview_title_only"',
         '"enabled": false',
         '"include_categories"',
         '"max_age_min": null,',
