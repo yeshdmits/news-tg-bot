@@ -169,7 +169,14 @@ def create_app(settings: Settings) -> Starlette:
             if is_callback:
                 await rt.feedback.handle_callback(update)
             else:
-                await rt.ops.handle_update(update)
+                # The loader forbids a review chat from also being the ops
+                # chat, so the two handlers can never both claim a message;
+                # whichever chat it came from decides.
+                handled = await rt.feedback.handle_message(
+                    update, bot_username=rt.ops.me_username
+                )
+                if handled is None:
+                    await rt.ops.handle_update(update)
         except Exception:
             log.exception("webhook_update_failed", update_id=update_id)
         return Response(status_code=200)

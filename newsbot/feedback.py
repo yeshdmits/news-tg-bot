@@ -42,6 +42,18 @@ CALLBACK_PREFIX = "fb"
 _ACTIONS = {"a": True, "r": False}
 
 
+async def register_commands(telegram: TelegramClient, chat_ids: list[str]) -> None:
+    """Menu scoped to each review chat. Called from the migration job
+    alongside setWebhook — never on container start, or every cold start
+    would hit the Bot API. The ops chat keeps its own separate menu."""
+    commands = [{"command": "next", "description": "show the next item to review"}]
+    for chat_id in chat_ids:
+        await telegram.api(
+            "setMyCommands",
+            {"commands": commands, "scope": {"type": "chat", "chat_id": chat_id}},
+        )
+
+
 def parse_callback_data(data: str | None) -> tuple[UUID, bool] | None:
     """``fb:a:<uuid>`` / ``fb:r:<uuid>`` → (item_id, approved).
 
@@ -64,6 +76,11 @@ class FeedbackBot:
     Depends on the spec's ``sources`` only — never on ``spec.errors``, which
     is optional. A spec with no error handling still gets a feedback loop."""
 
+    # How many archived items to pull in when a chat's queue runs dry. One is
+    # enough to keep a card on screen: every press calls advance() again, so
+    # the stream is continuous without ever building a backlog to manage.
+    top_up_batch = 1
+
     def __init__(
         self, conn: psycopg.Connection, telegram: TelegramClient, loaded: LoadedSpec
     ):
@@ -85,6 +102,13 @@ class FeedbackBot:
             if chat_id is not None:
                 seen.setdefault(chat_id, None)
         return list(seen)
+
+    def sources_for(self, chat_id: str) -> list[str]:
+        """Source names feeding one review chat."""
+        return sorted(
+            name for name, source in self._sources.items()
+            if source.feedback_chat_id == chat_id
+        )
 
     @property
     def active(self) -> bool:
@@ -121,6 +145,14 @@ class FeedbackBot:
             # with routing decisions that outlive their binding. Restoring
             # the source resumes them where they were.
             review = feedbackdb.claim_next(self.conn, chat_id, sorted(self._sources))
+        if review is None:
+            # Queue dry. Rather than wait for the next article to be published
+            # — which on a fully-archived feed can be hours — draw from the
+            # corpus already on disk, so review is limited by how fast an
+            # operator answers, not by how fast the world produces news.
+            sources = self.sources_for(chat_id)
+            if sources and feedbackdb.top_up(self.conn, chat_id, sources, self.top_up_batch):
+                review = feedbackdb.claim_next(self.conn, chat_id, sorted(self._sources))
         if review is None:
             return None
 
@@ -197,9 +229,53 @@ class FeedbackBot:
             chat_id=chat_id, by=sender.get("id"),
         )
         await self._answer(query, f"{'✅' if approved else '❌'} {verdict}")
-        await self._retire_card(chat_id, review.message_id, verdict, who)
+        await self._stamp_card(review, chat_id, verdict, who)
         await self.advance(chat_id)
         return verdict
+
+    async def handle_message(
+        self, update: dict[str, Any], *, bot_username: str | None = None
+    ) -> str | None:
+        """Handle ``/next`` in a review chat: post the next card without
+        waiting for the fetch job. Answering a card already advances the
+        queue, so this is for the case where the chat has gone quiet — a
+        failed send, or a queue that was empty when the last card was
+        answered. Returns a short action tag for tests."""
+        message = update.get("message") or {}
+        if (message.get("from") or {}).get("is_bot"):
+            return None
+        chat_id = str((message.get("chat") or {}).get("id", ""))
+        if chat_id not in self.chat_ids():
+            return None  # not a review chat of ours: stay silent
+        text = (message.get("text") or "").strip()
+        if not text.startswith("/"):
+            return None
+        command, _, suffix = text.split()[0][1:].partition("@")
+        if suffix and bot_username and suffix.lower() != bot_username.lower():
+            return None  # addressed to another bot in the same chat
+        if command.lower() != "next":
+            return None
+
+        if feedbackdb.pending_card(self.conn, chat_id) is not None:
+            await self._reply(chat_id, message, "a card is already up — answer it first")
+            return "next_busy"
+        if await self.advance(chat_id) is None:
+            await self._reply(chat_id, message, "nothing left to review 🎉")
+            return "next_empty"
+        return "next"
+
+    async def _reply(self, chat_id: str, message: dict[str, Any], text: str) -> None:
+        try:
+            await self.telegram.api(
+                "sendMessage",
+                {
+                    "chat_id": chat_id,
+                    "text": text,
+                    "reply_to_message_id": message.get("message_id"),
+                },
+            )
+        except (TelegramAPIError, TelegramTransportError) as e:
+            log.warning("review_reply_failed", error=str(e))
 
     async def _answer(self, query: dict[str, Any], text: str) -> None:
         """Clear the client-side spinner. Telegram gives ~10 s to answer a
@@ -212,36 +288,40 @@ class FeedbackBot:
         except (TelegramAPIError, TelegramTransportError) as e:
             log.warning("answer_callback_failed", error=str(e))
 
-    async def _retire_card(
-        self, chat_id: str, message_id: int | None, verdict: str, who: str
+    async def _stamp_card(
+        self, review: ReviewRecord, chat_id: str, verdict: str, who: str
     ) -> None:
-        """Take the answered card off the chat so only the next one shows.
+        """Mark an answered card in place — same model the alert engine uses:
+        each message is owned and edited, never deleted.
 
-        Deleting is the intent. A bot may delete its own messages for 48 h,
-        and beyond that only with admin rights — so fall back to stripping
-        the buttons and stamping the outcome. The decision is already
-        durable either way; this is presentation only."""
-        if message_id is None:
+        The card stays in the chat as the visible record of what was decided
+        and by whom, so the chat reads as a review log rather than a conveyor
+        belt. Only the buttons go, which is what stops it being answered
+        twice. Presentation only: the label is already durable, so a failed
+        edit costs nothing but a stale-looking card."""
+        if review.message_id is None:
             return
-        try:
-            await self.telegram.api(
-                "deleteMessage", {"chat_id": chat_id, "message_id": message_id}
-            )
+        source = self._sources.get(review.source_name)
+        if source is None:
             return
-        except (TelegramAPIError, TelegramTransportError) as e:
-            log.warning("review_card_delete_failed", error=str(e))
+        card = format_review_card(
+            writer.get_item(self.conn, review.item_id), source, chat_id
+        )
+        mark = "✅" if verdict == "approved" else "❌"
         try:
             await self.telegram.api(
                 "editMessageText",
                 {
                     "chat_id": chat_id,
-                    "message_id": message_id,
-                    "text": f"{verdict} by {who}",
+                    "message_id": review.message_id,
+                    "text": f"{card.text}\n\n{mark} {verdict} by {who}",
+                    "parse_mode": "HTML",
+                    "link_preview_options": {"is_disabled": True},
                     "reply_markup": {"inline_keyboard": []},
                 },
             )
         except (TelegramAPIError, TelegramTransportError) as e:
-            log.warning("review_card_edit_failed", error=str(e))
+            log.warning("review_card_stamp_failed", error=str(e))
 
 
 def _already_text(review: ReviewRecord | None) -> str:

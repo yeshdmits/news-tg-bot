@@ -63,7 +63,7 @@ Postgres storage accordingly.
 
 | Table | One row per | Notes |
 |---|---|---|
-| `feedback_reviews` | reviewed item | The human label. `approved` (boolean, NULL until answered) plus who answered and when, and the card's Telegram `message_id` while it is showing. `state` walks `queued → pending → decided`; a partial unique index on `(chat_id) WHERE state = 'pending'` is what enforces **one card per review chat at a time**, since both the fetch job and the webhook app send cards. Created when the item is first archived, for sources with a [`feedback`](configuration.md#feedback-sourcesfeedback) chat, duplicates excluded. |
+| `feedback_reviews` | reviewed item | The human label. `approved` (boolean, NULL until answered) plus who answered and when, and the card's Telegram `message_id` while it is showing. `state` walks `queued → pending → decided`; a partial unique index on `(chat_id) WHERE state = 'pending'` is what enforces **one card per review chat at a time**, since both the fetch job and the webhook app send cards. Written when the item is first archived, for sources with a [`feedback`](configuration.md#feedback-sourcesfeedback) chat, duplicates excluded — and topped up from `items` whenever a chat's queue runs dry, so an archive that predates the feature still gets labelled. |
 
 This is dataset, not operational state, so it follows the keep-everything
 stance above: no retention, nothing purged. `cli export` joins it 1:1 onto

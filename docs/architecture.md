@@ -109,8 +109,8 @@ sequenceDiagram
         W->>T: reply in ops chat
     else callback_query (review button)
         W->>PG: write the approve/reject label
-        W->>T: answer, delete the card
-        W->>PG: claim the next queued item
+        W->>T: answer, stamp the card (edit, never delete)
+        W->>PG: claim the next item, topping up from items if dry
         W->>T: send the next card
     end
 ```
