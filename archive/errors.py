@@ -442,12 +442,15 @@ def mark_update_seen(conn: psycopg.Connection, update_id: int) -> bool:
 
 
 def purge_seen_updates(conn: psycopg.Connection, *, hours: int = 24) -> int:
-    """Delete webhook update_ids older than the window; returns rows removed."""
-    rows = conn.execute(
-        "DELETE FROM seen_updates WHERE seen_utc < now() - %s RETURNING update_id",
-        (timedelta(hours=hours),),
-    ).fetchall()
-    return len(rows)
+    """Deprecated: use ``archive.retention.purge_seen_updates``.
+
+    Kept as a thin delegation because the window is no longer fixed at 24 h —
+    it is configurable via SEEN_UPDATES_TTL_HOURS, and retention now lives in
+    one module that owns every table's window.
+    """
+    from archive.retention import purge_seen_updates as _purge
+
+    return _purge(conn, hours=hours)
 
 
 # --- retention -----------------------------------------------------

@@ -2,7 +2,13 @@
 
 ## Status
 
-Accepted.
+Superseded by [ADR 0010](0010-tiered-archive.md). The keep-everything intent
+below still holds — nothing content-related is deleted — but its assumption of
+a single unbounded PostgreSQL tier does not survive 500k items/day on a disk
+with auto-grow off. The corpus now lives in object storage past a short hot
+window. The text below is left as written.
+
+Originally: Accepted.
 
 ## Context
 

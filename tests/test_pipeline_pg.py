@@ -153,25 +153,26 @@ async def test_real_spec_cold_start_skip_all(db):
     items = db.execute("SELECT count(*) AS n FROM items").fetchone()["n"]
     assert items == stats.new_items
 
-    # every item is decided exactly once per bound channel — each
-    # news source binds exactly one channel, so decisions == items, and no
-    # (item, channel) pair is missing.
-    decisions = db.execute("SELECT count(*) AS n FROM routing_decisions").fetchone()["n"]
-    assert decisions == items
-    undecided = db.execute(
-        """
-        SELECT count(*) AS n FROM items i
-        LEFT JOIN routing_decisions rd ON rd.item_id = i.item_id
-        WHERE rd.item_id IS NULL
-        """
-    ).fetchone()["n"]
-    assert undecided == 0
+    # Every item is decided exactly once per bound channel — each news source
+    # binds exactly one channel, so decisions == items and no (item, channel)
+    # pair is missing. Since migration 0004 a decision is persisted either as a
+    # row (RETAINED_DECISIONS) or as a counter, so the count spans both: these
+    # are all cold_start_skip, which is a counter.
+    rows = db.execute("SELECT count(*) AS n FROM routing_decisions").fetchone()["n"]
+    counted = db.execute("SELECT COALESCE(sum(n), 0) AS n FROM routing_stats").fetchone()["n"]
+    assert rows + counted == items
 
-    non_skip = db.execute(
-        "SELECT count(*) AS n FROM routing_decisions WHERE decision NOT IN "
-        "('cold_start_skip', 'duplicate')"
+    # A cold start is skip_all everywhere, so every outcome here is either
+    # cold_start_skip (a counter) or duplicate (a retained row). Nothing else,
+    # and nothing unaccounted for: the sum above is the "no (item, channel)
+    # pair was missed" check that a per-item LEFT JOIN used to make, which is
+    # no longer possible for outcomes that are only counted.
+    assert rows == db.execute(
+        "SELECT count(*) AS n FROM routing_decisions WHERE decision = 'duplicate'"
     ).fetchone()["n"]
-    assert non_skip == 0
+    assert counted == db.execute(
+        "SELECT COALESCE(sum(n), 0) AS n FROM routing_stats WHERE decision = 'cold_start_skip'"
+    ).fetchone()["n"]
     assert db.execute("SELECT count(*) AS n FROM deliveries").fetchone()["n"] == 0
 
     # every enabled source fetched its fixture cleanly; disabled ones never ran
@@ -225,11 +226,17 @@ async def test_post_newest_cold_start_posts_capped(db, tmp_path):
     assert stats.posted == 2
     assert len(telegram.calls) == 2
 
-    counts = {  # decision histogram after the first run
-
+    # Decision histogram after the first run. Since migration 0004 the
+    # retained outcomes keep a per-item row and the rest are counters, so the
+    # histogram is the union of the two.
+    counts = {
         r["decision"]: r["n"]
         for r in db.execute(
-            "SELECT decision, count(*) AS n FROM routing_decisions GROUP BY decision"
+            """
+            SELECT decision, count(*) AS n FROM routing_decisions GROUP BY decision
+            UNION ALL
+            SELECT decision, sum(n) AS n FROM routing_stats GROUP BY decision
+            """
         )
     }
     assert counts["rate_limited"] == 1  # 3 routed − cap 2
@@ -390,11 +397,14 @@ async def test_binding_removed_retires_stale_backlog_without_crashing(db, tmp_pa
 
     assert second.posted == 0
     assert len(telegram.calls) == 2  # nothing new sent
+    # channel_disabled is not in RETAINED_DECISIONS, so retiring the stale
+    # backlog entry moves it out of routing_decisions and into the counters —
+    # the reason string is what is lost in that trade (docs/data-model.md).
     assert db.execute(
-        """
-        SELECT count(*) AS n FROM routing_decisions
-        WHERE decision = 'channel_disabled' AND reason = 'binding removed from spec'
-        """
+        "SELECT count(*) AS n FROM routing_decisions WHERE decision = 'channel_disabled'"
+    ).fetchone()["n"] == 0
+    assert db.execute(
+        "SELECT COALESCE(sum(n), 0) AS n FROM routing_stats WHERE decision = 'channel_disabled'"
     ).fetchone()["n"] == 1
 
     # terminal, so the row is gone from the backlog for good

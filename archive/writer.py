@@ -16,6 +16,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from archive.dedupe import canonical_url, content_hash, simhash64
+from archive.ids import timestamp_of, uuid7
 from archive.models import ChannelState, Decision, DeliveryStatus, ItemRecord, SourceState
 from fetcher.parse import RawItem
 
@@ -66,6 +67,17 @@ def save_source_state(conn: psycopg.Connection, state: SourceState) -> None:
 # Reason prefix that marks a rate_limited decision as gated-not-dropped:
 # the item stays in the postable backlog and is retried next window.
 GATED_REASON_PREFIX = "gated:"
+
+# Outcomes that keep a per-item row in routing_decisions. Everything else is
+# counted in routing_stats instead: at 500k items/day one row per item per
+# bound channel makes this the largest table in the system, and the negative
+# outcomes are only ever read in aggregate.
+#
+# The three kept are the ones a person actually investigates per item —
+# "why did this post", "why is this stuck", "what was this a duplicate of" —
+# and `rate_limited` additionally *must* stay, because the postable backlog is
+# a query over it (see get_postable_backlog).
+RETAINED_DECISIONS = frozenset({"routed", "rate_limited", "duplicate"})
 
 
 def try_acquire_post_slot(
@@ -151,21 +163,31 @@ def store_item(
     Returns (item_id, is_new). Categories are written only for new rows.
     """
     canon = canonical_url(item.url)
+    # The id is minted here rather than by a server default, and first_seen_utc
+    # is read back out of it. Deriving rather than calling now() means the
+    # archive date embedded in the id and the column the partition is keyed on
+    # cannot drift apart — which is what lets a future label find this item
+    # from its id alone (archive/ids.py). It also removes the transaction-start
+    # skew: now() inside the per-fetch transaction is the time the transaction
+    # opened, so a fetch spanning midnight used to stamp items with the
+    # previous day.
+    item_id = uuid7()
+    first_seen_utc = timestamp_of(item_id)
     row = conn.execute(
         """
         INSERT INTO items
-          (source_name, fetch_id, source_item_id, raw_xml, title, lead_original,
-           lead_language, url_raw, canonical_url, image_url, published_raw,
-           published_utc, content_hash, title_simhash, duplicate_of,
-           copyright_holder, spec_hash)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+          (item_id, source_name, fetch_id, source_item_id, raw_xml, title,
+           lead_original, lead_language, url_raw, canonical_url, image_url,
+           published_raw, published_utc, first_seen_utc, content_hash,
+           title_simhash, duplicate_of, copyright_holder, spec_hash)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (source_name, source_item_id) DO NOTHING
         RETURNING item_id
         """,
         (
-            item.source_name, fetch_id, item.source_item_id, item.raw_xml,
+            item_id, item.source_name, fetch_id, item.source_item_id, item.raw_xml,
             item.title, item.lead, item.language, item.url, canon,
-            item.image_url, item.published_raw, item.published_utc,
+            item.image_url, item.published_raw, item.published_utc, first_seen_utc,
             content_hash(canon, item.title), simhash64(item.title),
             duplicate_of, item.copyright_holder, spec_hash,
         ),
@@ -193,17 +215,44 @@ def record_routing_decision(
     decision: Decision,
     reason: str | None = None,
     matched_clause: dict[str, Any] | None = None,
+    decided_utc: datetime | None = None,
 ) -> None:
-    """Idempotent: re-processing an already-decided (item, channel) is a no-op,
-    which is what makes crash-retried fetch cycles safe."""
+    """Record one (item, channel) outcome.
+
+    Outcomes in RETAINED_DECISIONS keep a per-item row; the rest only increment
+    a per-day counter. Nothing the bot *does* changes — this is purely what
+    gets persisted — but at 500k items/day it is the difference between the
+    largest table in the system and a few hundred rows a day.
+
+    Idempotent for the retained set: re-processing an already-decided (item,
+    channel) is a no-op, which is what makes crash-retried fetch cycles safe.
+    The counters cannot be idempotent — a counter has no per-item identity to
+    conflict on — so a retried fetch cycle can double-count a negative outcome.
+    That is an accepted, documented inaccuracy in a debugging aggregate; see
+    docs/data-model.md.
+    """
+    if decision.value in RETAINED_DECISIONS:
+        conn.execute(
+            """
+            INSERT INTO routing_decisions
+              (item_id, channel_name, decision, reason, matched_clause, decided_utc)
+            VALUES (%s, %s, %s, %s, %s, COALESCE(%s, now()))
+            ON CONFLICT (item_id, channel_name) DO NOTHING
+            """,
+            (item_id, channel_name, decision.value, reason,
+             Jsonb(matched_clause) if matched_clause is not None else None,
+             decided_utc),
+        )
+        return
+
     conn.execute(
         """
-        INSERT INTO routing_decisions (item_id, channel_name, decision, reason, matched_clause)
-        VALUES (%s, %s, %s, %s, %s)
-        ON CONFLICT (item_id, channel_name) DO NOTHING
+        INSERT INTO routing_stats (day, channel_name, decision, n)
+        VALUES (COALESCE(%s, now())::date, %s, %s, 1)
+        ON CONFLICT (day, channel_name, decision) DO UPDATE
+          SET n = routing_stats.n + 1
         """,
-        (item_id, channel_name, decision.value, reason,
-         Jsonb(matched_clause) if matched_clause is not None else None),
+        (decided_utc, channel_name, decision.value),
     )
 
 
@@ -214,15 +263,47 @@ def update_routing_decision(
     decision: Decision,
     reason: str | None = None,
 ) -> None:
-    """The routed → rate_limited transition under drop_oldest."""
-    conn.execute(
+    """Re-decide an existing (item, channel): the routed → rate_limited
+    transition under drop_oldest, the backlog age-out to too_old, and the
+    retirement of a binding that left the spec.
+
+    A transition can cross the RETAINED_DECISIONS boundary — a gated
+    ``rate_limited`` row aged out to ``too_old`` is the common case — so the
+    row moves to the counters instead of being updated in place. Updating it
+    would quietly leave non-retained outcomes in routing_decisions and defeat
+    the whole point of the split.
+    """
+    if decision.value in RETAINED_DECISIONS:
+        conn.execute(
+            """
+            UPDATE routing_decisions
+            SET decision = %s, reason = %s, decided_utc = now()
+            WHERE item_id = %s AND channel_name = %s
+            """,
+            (decision.value, reason, item_id, channel_name),
+        )
+        return
+
+    deleted = conn.execute(
         """
-        UPDATE routing_decisions
-        SET decision = %s, reason = %s, decided_utc = now()
+        DELETE FROM routing_decisions
         WHERE item_id = %s AND channel_name = %s
+        RETURNING decided_utc
         """,
-        (decision.value, reason, item_id, channel_name),
-    )
+        (item_id, channel_name),
+    ).fetchone()
+    # Only count it if a row actually moved: without this, a retried post phase
+    # would increment the counter on every pass over an already-retired item.
+    if deleted is not None:
+        conn.execute(
+            """
+            INSERT INTO routing_stats (day, channel_name, decision, n)
+            VALUES (now()::date, %s, %s, 1)
+            ON CONFLICT (day, channel_name, decision) DO UPDATE
+              SET n = routing_stats.n + 1
+            """,
+            (channel_name, decision.value),
+        )
 
 
 def mark_posted_after_gate(conn: psycopg.Connection, item_id: UUID, channel_name: str) -> None:

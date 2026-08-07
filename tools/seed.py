@@ -44,6 +44,8 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from archive.dedupe import canonical_url, content_hash, simhash64
+from archive.ids import timestamp_of, uuid7_at
+from archive.writer import RETAINED_DECISIONS
 
 # --- corpus shape ----------------------------------------------------------
 
@@ -197,8 +199,23 @@ def _uuid4(rng: random.Random) -> uuid.UUID:
     uuid.uuid4() would reseed from the OS and break the determinism promise in
     this module's docstring — and ids leak into source_item_id and the URLs,
     so they cannot simply be excluded from a comparison.
+
+    Used for fetch_id only. Item ids are UUIDv7 (see _item_id).
     """
     return uuid.UUID(int=rng.getrandbits(128), version=4)
+
+
+def _item_id(moment: datetime, rng: random.Random) -> tuple[uuid.UUID, datetime]:
+    """A UUIDv7 for an item, and the first_seen_utc that goes with it.
+
+    Mirrors what archive.writer.store_item does in production: the id carries
+    the timestamp and first_seen_utc is read back out of it, so the two agree
+    to the millisecond. Seeding them independently would produce a corpus whose
+    partition dates and derived dates disagree — exactly the bug the derivation
+    exists to prevent, hidden inside the fixture used to test for it.
+    """
+    item_id = uuid7_at(moment, entropy=rng.getrandbits(62), counter=rng.getrandbits(12))
+    return item_id, timestamp_of(item_id)
 
 
 def _weighted(rng: random.Random, pairs: tuple[tuple[str, int], ...]) -> str:
@@ -239,6 +256,8 @@ class Corpus:
         # for the items.duplicate_of self-FK: FK triggers fire at end of
         # statement, so a row may reference another row of the same COPY.
         self.wire_pool: list[tuple[uuid.UUID, str, str]] = []
+        # (day, channel, decision) -> count, flushed to routing_stats at the end.
+        self.stat_counts: dict[tuple[object, str, str], int] = {}
 
     def chunks(self):
         """Yield (fetch_rows, item_rows, category_rows, decision_rows) chunks."""
@@ -274,7 +293,7 @@ class Corpus:
 
     def _item(self, source, fetch_id, first_seen):
         rng = self.rng
-        item_id = _uuid4(rng)
+        item_id, first_seen = _item_id(first_seen, rng)
         duplicate_of = None
         roll = rng.random()
 
@@ -346,11 +365,19 @@ class Corpus:
                 category_rows.append((it["item_id"], ordinal, category))
             for channel in it["channels"]:
                 decision = "duplicate" if it["duplicate_of"] else _weighted(self.rng, DECISION_MIX)
-                decision_rows.append((
-                    it["item_id"], channel, decision,
-                    str(it["duplicate_of"]) if it["duplicate_of"] else None,
-                    it["first_seen_utc"],
-                ))
+                if decision in RETAINED_DECISIONS:
+                    decision_rows.append((
+                        it["item_id"], channel, decision,
+                        str(it["duplicate_of"]) if it["duplicate_of"] else None,
+                        it["first_seen_utc"],
+                    ))
+                else:
+                    # Everything else is a counter in production (migration
+                    # 0004), so seeding a per-item row would produce a corpus
+                    # that never occurs and would overstate routing_decisions
+                    # in every sizing measurement taken from it.
+                    key = (it["first_seen_utc"].date(), channel, decision)
+                    self.stat_counts[key] = self.stat_counts.get(key, 0) + 1
 
         return fetch_rows, item_rows, category_rows, decision_rows
 
@@ -412,6 +439,23 @@ def _flush(conn: psycopg.Connection, fetch_rows, item_rows, category_rows, decis
                 cp.write_row(row)
 
 
+def _flush_routing_stats(conn: psycopg.Connection, counts: dict) -> None:
+    """One upsert per (day, channel, decision) — a few hundred rows, so a
+    single executemany rather than COPY."""
+    if not counts:
+        return
+    with conn.cursor() as cur:
+        cur.executemany(
+            """
+            INSERT INTO routing_stats (day, channel_name, decision, n)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (day, channel_name, decision) DO UPDATE
+              SET n = routing_stats.n + EXCLUDED.n
+            """,
+            [(day, channel, decision, n) for (day, channel, decision), n in counts.items()],
+        )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--items", type=int, default=100_000, help="how many items to generate")
@@ -461,10 +505,14 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr, flush=True,
             )
 
+        _flush_routing_stats(conn, corpus.stat_counts)
+
     elapsed = (datetime.now(UTC) - started).total_seconds()
+    counted = sum(corpus.stat_counts.values())
     print(
         f"seeded {written:,} items across {len(corpus.sources)} sources "
-        f"spanning {args.days}d in {elapsed:,.1f}s",
+        f"spanning {args.days}d in {elapsed:,.1f}s "
+        f"({counted:,} routing outcomes counted, not stored per item)",
         file=sys.stderr,
     )
     return 0

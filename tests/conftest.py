@@ -25,11 +25,16 @@ TEST_DATABASE_URL = os.environ.get(
     "postgresql://newsbot:newsbot@localhost:5433/newsbot_test",
 )
 
+# Every table the schema owns, truncated between tests. Kept honest by
+# test_schema_inventory.py, which fails if a migration adds a table and
+# forgets this list — a missing entry leaks state across tests and shows up
+# as a baffling failure somewhere unrelated.
 ALL_TABLES = (
-    "deliveries", "routing_decisions", "translations", "item_categories",
-    "error_occurrences", "alert_outbox", "error_events", "operator_actions",
-    "bot_state", "seen_updates", "items", "fetches", "channel_state",
-    "source_state", "spec_versions",
+    "deliveries", "routing_decisions", "routing_stats", "translations",
+    "item_categories", "error_occurrences", "alert_outbox", "error_events",
+    "operator_actions", "bot_state", "seen_updates", "items",
+    "legacy_item_index", "fetches", "channel_state", "source_state",
+    "spec_versions",
 )
 
 

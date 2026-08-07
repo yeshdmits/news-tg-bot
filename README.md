@@ -94,8 +94,11 @@ Details in [docs/configuration.md](docs/configuration.md).
   [docs/legal.md](docs/legal.md) for your responsibilities as republisher.
 - Not multi-tenant: one spec, one database, one bot. Run a second copy for
   a second deployment.
-- The archive is not prunable by design — it grows forever
-  ([docs/data-model.md](docs/data-model.md)).
+- The archive is not prunable by design — nothing content-related is ever
+  deleted. Past a short hot window in Postgres it moves to Parquet in object
+  storage rather than being dropped
+  ([ADR 0010](docs/adr/0010-tiered-archive.md),
+  [docs/data-model.md](docs/data-model.md)).
 
 ## Documentation
 
@@ -104,7 +107,7 @@ Details in [docs/configuration.md](docs/configuration.md).
 | [docs/configuration.md](docs/configuration.md) | Every env var and every `spec.json` field: defaults, validation rules, worked and rejected examples. |
 | [docs/adding-a-source.md](docs/adding-a-source.md) | Tutorial: adding an awkward (namespaced Atom) feed, start to finish. |
 | [docs/architecture.md](docs/architecture.md) | Components, dependency rules, runtime units, execution-flow diagrams. |
-| [docs/data-model.md](docs/data-model.md) | The schema, what is stored and why, the keep-everything retention design. |
+| [docs/data-model.md](docs/data-model.md) | The schema, what is stored and why, the two-tier retention design, and every table's retention policy. |
 | [docs/deployment/terraform.md](docs/deployment/terraform.md) | Provisioning the Azure stack: backend bootstrap, variables, lifecycle rules, teardown. |
 | [docs/deployment/azure.md](docs/deployment/azure.md) | The runtime, the CI deploy sequence, verification, rollback, costs. |
 | [docs/deployment/other-clouds.md](docs/deployment/other-clouds.md) | The provider contract: what any cloud must inject so the app runs there. |

@@ -72,6 +72,14 @@ Key properties:
   `fetch_lock_held_elsewhere_skipping` and exits cleanly.
 - **Store and decide are one transaction per source**; posting is a separate
   phase with per-post transactions, so a crash mid-posting loses nothing.
+- **Item ids are UUIDv7**, minted by the writer rather than the server, and
+  `first_seen_utc` is read out of the id — which is what makes an archived
+  item locatable from its id alone. See
+  [Item identity](data-model.md#item-identity).
+- **Only some routing outcomes keep a per-item row.** `routed`,
+  `rate_limited` and `duplicate` do; the rest increment per-day counters in
+  `routing_stats`. The decision the bot *makes* is unchanged — only what is
+  persisted differs.
 - **Dedupe** happens at store time: canonical-URL/content-hash exact match,
   then a simhash scan (Hamming distance ≤ 3) over the last 72 h; duplicates
   are stored anyway with `duplicate_of` set and get `duplicate` decisions.

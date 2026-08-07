@@ -59,6 +59,31 @@ _last_ms = -1
 _counter = 0
 
 
+def uuid7_at(moment: datetime, *, entropy: int, counter: int = 0) -> UUID:
+    """A UUIDv7 with an explicit timestamp and explicit randomness.
+
+    The layout lives in exactly one place, so a caller that needs reproducible
+    ids — tools/seed.py builds a whole corpus from a seeded RNG — does not have
+    to restate the bit packing and drift from it.
+
+    ``moment`` is truncated to milliseconds, which is all the format carries.
+    Read it back with ``timestamp_of`` rather than reusing the input if the two
+    have to agree exactly.
+    """
+    return _pack(int(moment.timestamp() * 1000), counter & _MAX_RAND_A, entropy)
+
+
+def _pack(ms: int, counter: int, rand_b: int) -> UUID:
+    value = (
+        (ms & ((1 << _UNIX_TS_MS_BITS) - 1)) << 80
+        | _VERSION << 76
+        | counter << 64
+        | 0b10 << 62
+        | (rand_b & ((1 << 62) - 1))
+    )
+    return UUID(int=value)
+
+
 def uuid7(*, now_ms: int | None = None) -> UUID:
     """A new UUIDv7.
 
@@ -93,15 +118,7 @@ def uuid7(*, now_ms: int | None = None) -> UUID:
             ms = _last_ms
         counter = _counter
 
-    rand_b = int.from_bytes(os.urandom(8)) & ((1 << 62) - 1)
-    value = (
-        (ms & ((1 << _UNIX_TS_MS_BITS) - 1)) << 80
-        | _VERSION << 76
-        | counter << 64
-        | 0b10 << 62
-        | rand_b
-    )
-    return UUID(int=value)
+    return _pack(ms, counter, int.from_bytes(os.urandom(8)))
 
 
 def timestamp_of(item_id: UUID) -> datetime | None:

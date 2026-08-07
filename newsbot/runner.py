@@ -20,10 +20,11 @@ import httpx
 import psycopg
 import structlog
 
-from archive import dedupe, writer
+from archive import dedupe, retention, writer
 from archive import errors as errdb
 from archive.db import transaction
 from archive.models import Decision, DeliveryStatus, SourceState
+from archive.retention import RetentionWindows
 from feedspec.loader import LoadedSpec
 from feedspec.model import SourceDef, parse_cold_start
 from feedspec.resolve import (
@@ -65,6 +66,7 @@ class Deps:
     base_dir: str = "."
     alerts: AlertEngine | None = None
     healthcheck_url: str = ""
+    retention_windows: RetentionWindows = dataclass_field(default_factory=RetentionWindows)
     # filled by run_once from the spec: (source_name, channel_name) → EffectiveConfig
     pairs: dict[tuple[str, str], EffectiveConfig] = dataclass_field(default_factory=dict)
 
@@ -536,7 +538,7 @@ async def run_execution(deps: Deps) -> ExecutionResult:
         if deps.alerts is not None:
             await deps.alerts.maybe_digest()
             deps.alerts.maybe_retention()
-        errdb.purge_seen_updates(deps.conn)
+        retention.run(deps.conn, deps.retention_windows)
         await _deadman_ping(deps)
         return ExecutionResult(acquired=True, stats=stats)
     finally:
@@ -568,6 +570,10 @@ async def run_forever(deps: Deps) -> None:
         if deps.alerts is not None:
             await deps.alerts.maybe_digest()
             deps.alerts.maybe_retention()
+        # Long-running mode used to skip this entirely, so seen_updates grew
+        # without bound here while docs/data-model.md and ADR 0008 both claimed
+        # a 24 h purge "every execution" — true only of the --once path.
+        retention.run(deps.conn, deps.retention_windows)
         await _deadman_ping(deps)
         rows = deps.conn.execute(
             "SELECT min(next_fetch_utc) AS next FROM source_state"

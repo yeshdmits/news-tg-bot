@@ -46,7 +46,16 @@ def export_rows(
     conn: psycopg.Connection, from_utc: datetime, to_utc: datetime
 ) -> Iterator[dict[str, Any]]:
     """One row per (item, routing decision); undecided items still export
-    (store everything, export everything)."""
+    (store everything, export everything).
+
+    Since migration 0004 a NULL ``decision`` means one of two things, and this
+    view cannot tell them apart: the item genuinely had no bound channel
+    (archive-only source), or its outcome was one of the negative ones that is
+    now persisted as a counter in ``routing_stats`` rather than a per-item row.
+    Only ``routed``, ``rate_limited`` and ``duplicate`` still carry a decision
+    here. Per-day totals for the rest come from ``routing_stats``; they are not
+    joinable back to individual items, by design — see docs/data-model.md.
+    """
     with conn.cursor() as cursor:
         cursor.execute(_EXPORT_SQL, (from_utc, to_utc))
         for row in cursor:
