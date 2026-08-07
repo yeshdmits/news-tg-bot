@@ -19,6 +19,7 @@ from feedspec.model import (
     Binding,
     ClassificationRule,
     ErrorsConfig,
+    FeedbackCfg,
     FrozenModel,
     Mapping,
     PostStyle,
@@ -46,8 +47,16 @@ class EffectiveSource(FrozenModel):
     url_verified: str | None
     namespaces: dict[str, str]
     schema_file: str | None
+    feedback: FeedbackCfg | None
     mapping: Mapping
     notes: str | None
+
+    @property
+    def feedback_chat_id(self) -> str | None:
+        """The review chat, or None when the source is not reviewed."""
+        if self.feedback is None or not self.feedback.enabled:
+            return None
+        return self.feedback.chat_id
 
 
 class EffectiveConfig(FrozenModel):
@@ -101,6 +110,7 @@ def resolve_source(spec: Spec, source: SourceDef) -> EffectiveSource:
         url_verified=source.url_verified,
         namespaces=_effective(source, "namespaces", d),
         schema_file=_effective(source, "schema_file", d),
+        feedback=_effective(source, "feedback", d),
         mapping=source.mapping,
         notes=source.notes,
     )

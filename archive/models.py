@@ -45,6 +45,15 @@ class ErrorState(StrEnum):
     RESOLVED = "resolved"
 
 
+class ReviewState(StrEnum):
+    """Lifecycle of one item's admin review. ``pending`` means the card
+    is (or is about to be) the single one showing in its chat."""
+
+    QUEUED = "queued"
+    PENDING = "pending"
+    DECIDED = "decided"
+
+
 class SourceState(FrozenRow):
     """Per-source fetch scheduling row: next/last fetch times, HTTP cache
     validators, cold-start flag and the failure counter behind backoff."""
@@ -63,6 +72,24 @@ class ChannelState(FrozenRow):
 
     channel_name: str
     last_post_utc: AwareDatetime | None = None
+
+
+class ReviewRecord(FrozenRow):
+    """One row of feedback_reviews. ``approved`` is the label the whole
+    feature exists to collect: True/False once decided, None before."""
+
+    item_id: UUID
+    source_name: str
+    chat_id: str
+    state: ReviewState
+    queued_utc: AwareDatetime
+    message_id: int | None = None
+    sent_utc: AwareDatetime | None = None
+    approved: bool | None = None
+    decided_utc: AwareDatetime | None = None
+    decided_by_user_id: int | None = None
+    decided_by_username: str | None = None
+    spec_hash: str
 
 
 class ItemRecord(FrozenRow):

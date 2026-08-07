@@ -105,6 +105,17 @@ class ChannelDef(FrozenModel):
     enabled: bool = True
 
 
+class FeedbackCfg(FrozenModel):
+    """Admin review chat for a source. Every new non-duplicate item the
+    source archives is queued for it; the chat shows one card at a time
+    with approve/reject buttons, and the answer is stored as a label on
+    the item. Independent of ``channels`` — an archive-only source can be
+    reviewed exactly like a posting one."""
+
+    chat_id: str
+    enabled: bool = True
+
+
 class SourceDef(FrozenModel):
     """A feed source: where and how often to fetch, how to map items,
     and the channel bindings that receive them. An empty channels list
@@ -126,6 +137,7 @@ class SourceDef(FrozenModel):
     namespaces: dict[str, str] = {}
     schema_file: str | None = None
     channels: tuple[Binding, ...]
+    feedback: FeedbackCfg | None = None
     mapping: Mapping
     notes: str | None = None
 

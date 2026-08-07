@@ -10,8 +10,8 @@ CLI entrypoint, three runtime shapes.
 | `feedspec/` | Parse and validate spec bytes; resolve effective config per (source, channel) pair. Pure — no I/O. | nothing internal |
 | `specsource.py` | Spec acquisition: `SPEC_JSON` / `SPEC_URL` / `SPEC_PATH` precedence + HTTPS fetch; hands the bytes to `feedspec`. | `feedspec` |
 | `fetcher/` | HTTP conditional GET, XML parsing, optional XSD validation, mapping-expression evaluation. **Never imports `archive`** — item-level problems surface through an `on_problem` callback the caller provides. | `feedspec` |
-| `archive/` | The only writer to PostgreSQL: items, fetches, decisions, deliveries, error events, migrations. | `feedspec` |
-| `newsbot/` | Orchestration: the runner (fetch → store → route → post), Telegram client, formatter, translation, alert engine, ops-command bot, webhook app. | all of the above |
+| `archive/` | The only writer to PostgreSQL: items, fetches, decisions, deliveries, error events, feedback reviews, migrations. | `feedspec` |
+| `newsbot/` | Orchestration: the runner (fetch → store → route → post), Telegram client, formatter, translation, alert engine, ops-command bot, feedback bot, webhook app. | all of the above |
 | `cli.py` | Argument parsing, settings from env, wiring. | all of the above |
 
 ```mermaid
@@ -61,6 +61,10 @@ sequenceDiagram
         J->>T: send up to max_posts_per_run posts
         J->>PG: record deliveries
     end
+    loop each review chat
+        J->>PG: claim oldest queued item (if no card showing)
+        J->>T: send review card (title/lead/link + 2 buttons)
+    end
     J->>PG: maybe digest, retention, purge seen_updates
     J->>T: (deadman ping to HEALTHCHECK_URL)
     J->>PG: advisory unlock
@@ -81,6 +85,9 @@ Key properties:
 - **Storing and posting are separable**: a source with an empty `channels` list
   is [archive-only](configuration.md#archive-only-sources) — it runs the whole
   fetch/parse/dedupe/store path and stops before routing.
+- **Reviewing is separable too**: a source with a
+  [`feedback`](configuration.md#feedback-sourcesfeedback) chat queues each new
+  item for an approve/reject label, independently of whether it posts anywhere.
 - Failures are classified into error events and alerted per the spec's
   `errors` config; a failing source backs off exponentially (cap 60 min)
   without affecting other sources.
@@ -97,12 +104,25 @@ sequenceDiagram
     W->>W: constant-time secret check → 401 if wrong
     W->>PG: mark update_id seen (idempotency gate)
     Note over W,PG: duplicate update → 200, no side effects
-    W->>PG: read/write error events (ops commands)
-    W->>T: reply in ops chat
+    alt message (ops command)
+        W->>PG: read/write error events
+        W->>T: reply in ops chat
+    else callback_query (review button)
+        W->>PG: write the approve/reject label
+        W->>T: answer, delete the card
+        W->>PG: claim the next queued item
+        W->>T: send the next card
+    end
 ```
 
 `GET /healthz` answers without touching the database — a probe can never
 wake Postgres or fail because of it.
+
+The two update kinds diverge before any Bot API call: `getMe` only exists to
+disambiguate `/cmd@suffix`, so a button press never pays for it on a cold
+start. The label is written before any Telegram traffic, so a card that
+cannot be deleted, or a next card that cannot be sent, never costs a
+decision — the fetch job repairs the chat on its next pass.
 
 ## Spec-driven design
 

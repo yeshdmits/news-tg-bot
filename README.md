@@ -15,6 +15,14 @@ Posting is optional per source: a feed with an empty `channels` list is
 [archive-only](docs/configuration.md#archive-only-sources) — fetched, parsed
 and stored, but never published.
 
+Reviewing is optional per source too, and independent of posting: give a
+source a [`feedback`](docs/configuration.md#feedback-sourcesfeedback) chat and
+every new item shows up there as a card with approve/reject buttons, one at a
+time. The answers are stored as boolean labels and come out of `cli export`
+next to the item — which is how the archive becomes a training set rather
+than just a corpus. It works for archive-only sources exactly as it does for
+publishing ones.
+
 A post looks like this — real output of the formatter over a feed sample
 from the test fixtures (HTML sent to Telegram: bold title, truncated lead,
 a "Read more" link, per-source hashtags):

@@ -194,6 +194,7 @@ def cmd_validate(settings: Settings, args: argparse.Namespace) -> int:
 
     pairs = resolve_all(spec)
     archive_only = 0
+    reviewed = 0
     for source in spec.sources:
         eff_src = resolve_source(spec, source)
         state = "" if eff_src.enabled else "  [DISABLED]"
@@ -226,10 +227,15 @@ def cmd_validate(settings: Settings, args: argparse.Namespace) -> int:
                 f"{cfg.queue_policy}"
                 + (", " + ", ".join(flags) if flags else "")
             )
+        if eff_src.feedback is not None:
+            state = "" if eff_src.feedback.enabled else " (disabled)"
+            reviewed += eff_src.feedback.enabled
+            print(f"    ~> review in [{eff_src.feedback.chat_id}]{state}")
     archive_note = f" ({archive_only} archive-only)" if archive_only else ""
+    review_note = f", {reviewed} reviewed" if reviewed else ""
     print(
         f"\nOK: {len(spec.sources)} sources{archive_note}, "
-        f"{len(spec.channels)} channels, {len(pairs)} bindings"
+        f"{len(spec.channels)} channels, {len(pairs)} bindings{review_note}"
     )
     return 0
 
@@ -399,9 +405,11 @@ def cmd_register_webhook(settings: Settings, args: argparse.Namespace) -> int:
                     {
                         "url": settings.webhook_url,
                         "secret_token": settings.webhook_secret,
-                        # Only what the ops bot handles — anything more wakes
-                        # the scale-to-zero container for nothing.
-                        "allowed_updates": ["message"],
+                        # Only what the bot handles — anything more wakes the
+                        # scale-to-zero container for nothing. callback_query
+                        # carries the review buttons; without it Telegram
+                        # silently never delivers a press.
+                        "allowed_updates": ["message", "callback_query"],
                     },
                 )
                 await register_commands(telegram, ops_chat_id)
@@ -487,6 +495,7 @@ def _db_conn(settings: Settings):
 def cmd_stats(settings: Settings, args: argparse.Namespace) -> int:
     """Print archive statistics: per-source item counts, routing-decision
     histogram, deliveries and the postable backlog."""
+    from archive import feedback as feedbackdb
     from archive.stats import backlog_sizes, channel_stats, delivery_stats, source_stats
 
     conn = _db_conn(settings)
@@ -519,6 +528,20 @@ def cmd_stats(settings: Settings, args: argparse.Namespace) -> int:
             print("  (empty)")
         for row in rows:
             print(f"  {row['channel_name']:<10} {row['n']}")
+
+        print("\n== review queues ==")
+        rows = feedbackdb.queue_stats(conn)
+        if not rows:
+            print("  (no source has a feedback chat)")
+        for row in rows:
+            labelled = row["approved"] + row["rejected"]
+            rate = 100.0 * row["approved"] / labelled if labelled else 0.0
+            print(
+                f"  {row['chat_id']:<16} queued={row['queued']:<5} "
+                f"showing={row['pending']:<2} labelled={labelled:<6} "
+                f"({row['approved']} approved / {row['rejected']} rejected, "
+                f"{rate:.0f}% approval)"
+            )
         return 0
     finally:
         conn.close()

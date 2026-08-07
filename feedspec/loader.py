@@ -106,6 +106,26 @@ def _cross_checks(spec: Spec) -> None:
                     f"posting; set it to 'skip_all'"
                 )
 
+    # Same stance as the ops_chat_id guard below: a review card carries
+    # approve/reject buttons and is deleted once answered, so the chat that
+    # receives it must be one the operators own, never an audience channel.
+    for source in spec.sources:
+        chat_id = resolve_source(spec, source).feedback_chat_id
+        if chat_id is None:
+            continue
+        clash = next((c for c in spec.channels if c.id == chat_id), None)
+        if clash is not None:
+            raise SpecError(
+                f"source '{source.name}' feedback.chat_id {chat_id!r} is also the chat id "
+                f"of news channel '{clash.name}' — refusing to post review cards into a "
+                f"news channel"
+            )
+        if spec.errors is not None and chat_id == spec.errors.ops_chat_id:
+            raise SpecError(
+                f"source '{source.name}' feedback.chat_id {chat_id!r} is also "
+                f"errors.ops_chat_id — review cards and operator alerts need separate chats"
+            )
+
     unknown_defaults = set(spec.defaults) - ALLOWED_DEFAULT_KEYS
     if unknown_defaults:
         raise SpecError(f"unknown key(s) in defaults: {sorted(unknown_defaults)}")

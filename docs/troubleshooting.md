@@ -75,6 +75,35 @@ Work through these in order — each one is by design:
 | `/ack` refused | Write commands need the `admin` role in the ops chat (cached ~15 min) or membership in `write_allowlist`. The refusal is logged to `operator_actions`. | Promote the user or add their id to `errors.authorization.write_allowlist`. |
 | Webhook not registered after standing up the stack | `register-webhook` runs only in the migrate job — never on container start. | Start `<name_prefix>-migrate` once (see `docs/deployment/terraform.md`). |
 
+## Review / feedback problems
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Cards appear but pressing a button does nothing | `allowed_updates` does not include `callback_query`, so Telegram never delivers the press. Registrations made by an older build ask for `message` only. | Re-run `register-webhook` (the migrate job does it on every deploy). |
+| No card ever appears | The source has no `feedback` block or it is `enabled: false`; or `TELEGRAM_BOT_TOKEN` is empty, which fills the queue without sending. `cli validate` prints `~> review in [...]` for every reviewed source. | Add the block, set a token, and wait one fetch interval — the fetch job seeds the chat. |
+| Cards stopped, queue is not empty | A card is still showing (only one at a time), or a claim's send failed and is waiting for the next fetch pass. `cli stats` shows `showing=` and `queued=` per chat. | Answer the card. If `showing=1` but the chat is visibly empty, the card was deleted by hand — clear it with `UPDATE feedback_reviews SET state='queued', message_id=NULL WHERE state='pending'`. |
+| Answered cards stay in the chat with their buttons stripped | A bot may delete its own messages only for 48 h; beyond that it needs admin rights. The label is written before any Telegram call, so nothing was lost. | Promote the bot to admin in the review chat. |
+| A press answers "already approved/rejected" | Two people pressed the same card; the first press stands. | Nothing to fix — this is the intended race outcome. |
+| `review_approved` is empty in the export | Those items are not labelled yet (`review_state` is `queued`/`pending`), or their source has no review chat (`review_state` is empty too). | Filter on `review_approved IS NOT NULL` when building a training set. |
+
+To exercise the loop locally with no bot token and no Telegram account, POST
+a synthetic press at the webhook and watch `cli stats` move:
+
+```bash
+docker compose --profile dev up -d       # db, migrate, bot, webhook:8000, adminer:8080
+docker compose run --rm bot python -m cli stats     # find the pending item_id
+curl -s localhost:8000/telegram/webhook \
+  -H "x-telegram-bot-api-secret-token: $TELEGRAM_WEBHOOK_SECRET" \
+  -H 'content-type: application/json' \
+  -d '{"update_id":1,"callback_query":{"id":"1","from":{"id":42,"username":"me"},
+       "message":{"message_id":100,"chat":{"id":-100999900010}},
+       "data":"fb:a:<item_id>"}}'
+docker compose run --rm bot python -m cli stats     # labelled count went up
+```
+
+The outbound Bot API calls fail harmlessly without a token; what this checks
+is that the Postgres state machine advances.
+
 ## Translation problems
 
 | Symptom | Cause | Fix |

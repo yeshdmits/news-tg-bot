@@ -232,6 +232,7 @@
       "fetch_interval_min": 60,
       "cold_start_policy": "skip_all",
       "channels": [],
+      "feedback": { "chat_id": "-100999900010", "enabled": true },
       "mapping": {
         "items": "channel/item",
         "id": "guid",
@@ -242,7 +243,7 @@
         "published_format": "rfc822",
         "category": "category"
       },
-      "notes": "Archive-only: the empty channels list means this feed is fetched, parsed, deduped and stored like any other, but never posted anywhere. Use it to evaluate a feed before wiring it to a chat, or to build a corpus for `cli export`. cold_start_policy must be skip_all here — post_newest:N only affects posting. Adding a binding later routes only newly-fetched items, never the ones already archived."
+      "notes": "Archive-only: the empty channels list means this feed is fetched, parsed, deduped and stored like any other, but never posted anywhere. Use it to evaluate a feed before wiring it to a chat, or to build a corpus for `cli export`. cold_start_policy must be skip_all here — post_newest:N only affects posting. Adding a binding later routes only newly-fetched items, never the ones already archived. The feedback block is independent of channels: every new item is queued for approve/reject review in that chat, which is what turns the corpus into a labelled dataset."
     }
   ]
 }

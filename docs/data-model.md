@@ -1,7 +1,7 @@
 # Data model
 
 One PostgreSQL database, schema owned by alembic
-(`archive/migrations/versions/`, three migrations, plain SQL). The `archive`
+(`archive/migrations/versions/`, four migrations, plain SQL). The `archive`
 package is the **only** code that writes to it.
 
 ## Design stance: keep everything
@@ -59,6 +59,19 @@ Postgres storage accordingly.
 |---|---|
 | `seen_updates` | One row per processed Telegram `update_id`. Webhook idempotency: a redelivered update is acknowledged without re-running its side effects. Rows are purged after 24 h. |
 
+### Admin feedback (0004)
+
+| Table | One row per | Notes |
+|---|---|---|
+| `feedback_reviews` | reviewed item | The human label. `approved` (boolean, NULL until answered) plus who answered and when, and the card's Telegram `message_id` while it is showing. `state` walks `queued → pending → decided`; a partial unique index on `(chat_id) WHERE state = 'pending'` is what enforces **one card per review chat at a time**, since both the fetch job and the webhook app send cards. Created when the item is first archived, for sources with a [`feedback`](configuration.md#feedback-sourcesfeedback) chat, duplicates excluded. |
+
+This is dataset, not operational state, so it follows the keep-everything
+stance above: no retention, nothing purged. `cli export` joins it 1:1 onto
+`items` as `review_state` / `review_approved` / `review_decided_utc` /
+`review_decided_by_user_id`, which is what turns the archive from a corpus
+into a training set. The label is written before any Telegram traffic
+happens, so a card that cannot be deleted never costs a decision.
+
 Migration 0003 also sets role-level `statement_timeout = '30s'` and
 `idle_in_transaction_session_timeout = '60s'` — a killed serverless container
 must not strand a lock or an idle transaction.
@@ -76,8 +89,8 @@ All deletion in the codebase happens in two functions
 | `error_events` | resolved, older than `errors.retention.events_days`, **and** no surviving occurrences | 365 days |
 
 Retention runs at most once per 24 h (tracked in `bot_state`). Everything
-else — items, raw XML, fetches, deliveries, routing decisions, translations —
-is kept forever.
+else — items, raw XML, fetches, deliveries, routing decisions, translations,
+feedback reviews — is kept forever.
 
 ## Timezone discipline
 

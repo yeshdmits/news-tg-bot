@@ -22,12 +22,14 @@ import structlog
 
 from archive import dedupe, writer
 from archive import errors as errdb
+from archive import feedback as feedbackdb
 from archive.db import transaction
 from archive.models import Decision, DeliveryStatus, SourceState
 from feedspec.loader import LoadedSpec
 from feedspec.model import SourceDef, parse_cold_start
 from feedspec.resolve import (
     EffectiveConfig,
+    EffectiveSource,
     resolve_all,
     resolve_channel,
     resolve_source,
@@ -35,6 +37,7 @@ from feedspec.resolve import (
 from fetcher.http import ConditionalState, FetchError, fetch_feed
 from fetcher.parse import ParseError, RawItem, parse_feed
 from newsbot.alerts import AlertEngine
+from newsbot.feedback import FeedbackBot
 from newsbot.formatter import format_post
 from newsbot.router import Candidate, decide_item, select_for_channel
 from newsbot.telegram import TelegramClient
@@ -81,6 +84,8 @@ class RunStats:
     fetched_sources: int = 0
     new_items: int = 0
     posted: int = 0
+    queued_for_review: int = 0
+    review_cards_sent: int = 0
     errors: list[str] = dataclass_field(default_factory=list)
 
 
@@ -219,7 +224,7 @@ async def process_source(deps: Deps, source: SourceDef, stats: RunStats) -> None
         new_count = 0
         for item in items:
             new_count += _store_and_decide(
-                deps, fetch_id, item, source, effective.kind, now,
+                deps, fetch_id, item, source, effective, now, stats,
                 cold_start_eligible=eligible_ids is None or item.source_item_id in eligible_ids,
             )
         possible_gap = (
@@ -289,12 +294,14 @@ def _store_and_decide(
     fetch_id: UUID,
     item: RawItem,
     source: SourceDef,
-    source_kind: str,
+    effective: EffectiveSource,
     now: datetime,
+    stats: RunStats,
     *,
     cold_start_eligible: bool,
 ) -> int:
-    """Store one item and record a decision for every bound channel.
+    """Store one item, record a decision for every bound channel, and queue
+    it for admin review when the source has a feedback chat.
     Returns 1 when the item is new, 0 when it was already archived."""
     conn = deps.conn
     spec = deps.loaded.spec
@@ -316,6 +323,16 @@ def _store_and_decide(
     if not is_new:
         return 0
 
+    # Review is orthogonal to routing — an archive-only source is labelled
+    # exactly like a posting one. Duplicates are skipped: the label belongs
+    # to the story, and the original already carries it.
+    review_chat_id = effective.feedback_chat_id
+    if review_chat_id is not None and duplicate_of is None and feedbackdb.enqueue(
+        conn, item_id, source_name=source.name,
+        chat_id=review_chat_id, spec_hash=deps.loaded.spec_hash,
+    ):
+        stats.queued_for_review += 1
+
     # No bindings is a supported shape: an archive-only source stores its
     # items and deliberately produces zero routing_decisions rows.
     for binding in source.channels:
@@ -327,7 +344,7 @@ def _store_and_decide(
             lead=item.lead,
             categories=item.categories,
             published_utc=item.published_utc,
-            source_kind=source_kind,
+            source_kind=effective.kind,
             now=now,
             is_duplicate=duplicate_of is not None,
             duplicate_of=duplicate_of,
@@ -468,8 +485,27 @@ async def post_phase(deps: Deps, stats: RunStats) -> None:
             await asyncio.sleep(POST_PAUSE_S if not deps.telegram.dry_run else 0)
 
 
+async def feedback_phase(deps: Deps, stats: RunStats) -> None:
+    """Keep one review card showing in every review chat.
+
+    The webhook app drives the loop while an operator is pressing buttons;
+    this is the seed and the repair path — it starts a chat that has never
+    had a card, restarts one whose queue ran dry, and re-sends a claim whose
+    send failed or whose replica died mid-flight. A no-op in the steady
+    state, so it is safe on every pass."""
+    bot = FeedbackBot(deps.conn, deps.telegram, deps.loaded)
+    if not bot.active:
+        return
+    try:
+        stats.review_cards_sent = await bot.advance_all()
+    except psycopg.Error as e:
+        # Never let the review loop take down a fetch pass; posting and
+        # archiving have already happened by now.
+        log.warning("feedback_phase_failed", error=str(e))
+
+
 async def run_once(deps: Deps) -> RunStats:
-    """One pass: fetch every due source, then post per channel."""
+    """One pass: fetch every due source, post per channel, top up review."""
     stats = RunStats()
     conn = deps.conn
     writer.ensure_spec_version(conn, deps.loaded.spec_hash, deps.loaded.raw)
@@ -485,11 +521,14 @@ async def run_once(deps: Deps) -> RunStats:
             await process_source(deps, source, stats)
 
     await post_phase(deps, stats)
+    await feedback_phase(deps, stats)
     log.info(
         "run_complete",
         sources=stats.fetched_sources,
         new_items=stats.new_items,
         posted=stats.posted,
+        queued_for_review=stats.queued_for_review,
+        review_cards_sent=stats.review_cards_sent,
         errors=len(stats.errors),
     )
     return stats

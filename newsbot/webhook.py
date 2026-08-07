@@ -37,6 +37,7 @@ class _Runtime:
     http: httpx.AsyncClient
     engine: "AlertEngine"  # noqa: F821 — imported lazily in _build
     ops: "OpsBot"  # noqa: F821
+    feedback: "FeedbackBot"  # noqa: F821
 
 
 class _AppState:
@@ -64,6 +65,7 @@ class _AppState:
         from archive.db import connect
         from fetcher.http import make_client
         from newsbot.alerts import AlertEngine
+        from newsbot.feedback import FeedbackBot
         from newsbot.ops import OpsBot
         from newsbot.telegram import TelegramClient
         from specsource import load_spec_for
@@ -79,7 +81,10 @@ class _AppState:
         )
         engine = AlertEngine(conn, telegram, loaded.spec.errors, spec_hash=loaded.spec_hash)
         ops = OpsBot(conn, telegram, loaded, engine)
-        return _Runtime(conn=conn, http=http, engine=engine, ops=ops)
+        feedback = FeedbackBot(conn, telegram, loaded)
+        return _Runtime(
+            conn=conn, http=http, engine=engine, ops=ops, feedback=feedback
+        )
 
     async def _close(self) -> None:
         if self._rt is None:
@@ -119,9 +124,10 @@ def create_app(settings: Settings) -> Starlette:
             log.warning("unauthorized_webhook_call_unreported")
 
     async def webhook(request: Request) -> Response:
-        """Handle one Telegram update: check the secret token (401),
-        dedupe on update_id, dispatch to the ops bot. The status code
-        steers Telegram: non-200 asks for redelivery, 200 acknowledges."""
+        """Handle one Telegram update: check the secret token (401), dedupe
+        on update_id, dispatch to the ops bot (messages) or the feedback bot
+        (button presses). The status code steers Telegram: non-200 asks for
+        redelivery, 200 acknowledges."""
         secret = settings.webhook_secret
         header = request.headers.get(SECRET_HEADER, "")
         if not secret or not hmac.compare_digest(header, secret):
@@ -147,7 +153,11 @@ def create_app(settings: Settings) -> Starlette:
         except Exception:
             log.exception("webhook_state_init_failed")
             return Response(status_code=503)
-        if not await rt.ops.ensure_me():
+        # getMe only disambiguates /cmd@suffix, so it is resolved for message
+        # updates only — a button press must not pay for a Bot API round trip
+        # on every cold start.
+        is_callback = "callback_query" in update
+        if not is_callback and not await rt.ops.ensure_me():
             return Response(status_code=503)
         try:
             if not errdb.mark_update_seen(rt.conn, update_id):
@@ -156,7 +166,10 @@ def create_app(settings: Settings) -> Starlette:
             log.exception("webhook_seen_updates_failed")
             return Response(status_code=503)
         try:
-            await rt.ops.handle_update(update)
+            if is_callback:
+                await rt.feedback.handle_callback(update)
+            else:
+                await rt.ops.handle_update(update)
         except Exception:
             log.exception("webhook_update_failed", update_id=update_id)
         return Response(status_code=200)
