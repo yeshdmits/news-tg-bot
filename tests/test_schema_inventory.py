@@ -29,6 +29,10 @@ def _live_tables(db) -> set[str]:
         SELECT c.relname AS name
         FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
+          -- Partition children are storage for their parent, not tables in
+          -- their own right: they are created and dropped by the partition
+          -- maintenance job, and neither inventory should list them.
+          AND NOT EXISTS (SELECT 1 FROM pg_inherits WHERE inhrelid = c.oid)
         """
     ).fetchall()
     return {r["name"] for r in rows} - IGNORED

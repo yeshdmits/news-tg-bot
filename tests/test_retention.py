@@ -42,10 +42,7 @@ def test_seen_updates_window_is_configurable(db):
     assert retention.purge_seen_updates(db, hours=2) == 0
 
 
-def test_fetches_purge_is_inert_while_the_items_foreign_key_exists(db):
-    """items.fetch_id references fetches until migration 0006. Deleting inside
-    the window would fail on rows still referenced, so this returns 0 rather
-    than raising — the dependency is recorded in docs/data-model.md."""
+def _old_fetch(db) -> None:
     db.execute(
         "INSERT INTO spec_versions (spec_hash, spec) VALUES ('c', '{}') ON CONFLICT DO NOTHING"
     )
@@ -54,6 +51,25 @@ def test_fetches_purge_is_inert_while_the_items_foreign_key_exists(db):
         "VALUES ('src', now() - interval '200 days', 'c')"
     )
 
+
+def test_fetches_purge_is_live_once_the_items_foreign_key_is_gone(db):
+    """Migration 0006 drops items_fetch_id_fkey, which is what finally makes
+    fetches prunable. Before that the purge gates itself off — see the test
+    below — because deleting inside the window would fail on rows still
+    referenced by items."""
+    assert not retention._fetch_id_fk_exists(db), "0006 should have dropped this FK"
+
+    _old_fetch(db)
+    assert retention.purge_fetches(db, days=90) == 1
+    assert db.execute("SELECT count(*) AS n FROM fetches").fetchone()["n"] == 0
+
+
+def test_fetches_purge_gates_itself_off_while_the_foreign_key_is_present(db, monkeypatch):
+    """The ordering dependency itself, asserted rather than assumed. Shipping a
+    purge that throws would have been worse than shipping none."""
+    monkeypatch.setattr(retention, "_fetch_id_fk_exists", lambda conn: True)
+
+    _old_fetch(db)
     assert retention.purge_fetches(db, days=90) == 0
     assert db.execute("SELECT count(*) AS n FROM fetches").fetchone()["n"] == 1
 

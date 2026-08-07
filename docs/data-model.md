@@ -77,6 +77,56 @@ must not strand a lock or an idle transaction. Migrations run as that role, so
 every one that backfills lifts both with `SET LOCAL` for the duration; see
 [Writing a migration that backfills](#writing-a-migration-that-backfills).
 
+### Partitioning (0006)
+
+`items`, `item_categories`, `routing_decisions` and `deliveries` are all
+`PARTITION BY RANGE (first_seen_utc)` with **daily** partitions — weekly is too
+coarse for a 7-day window, since a week cannot drop a day.
+
+Every dependant carries a **copy of `items.first_seen_utc`**, not its own
+clock-derived column. That is a correctness requirement, not tidiness: putting
+`now()` into `deliveries`' primary key would break the post-once guarantee,
+because a retried claim evaluates a fresh timestamp, misses the conflict
+target, and posts the same item to the same channel twice. A column that is a
+function of `item_id` cannot do that, so the three-column conflict target stays
+exactly equivalent to the old two-column one. `routing_decisions.decided_utc`
+is left alone — it is real data that a re-decision changes.
+
+**Every lookup on those keys must supply `first_seen_utc`** or the planner
+cannot prune. Measured on a 24-partition database, the delivery-claim path goes
+from 1 scan node and 187 buffers to 24 and 1229 — and it runs for every routed
+item. `archive.writer._item_day` resolves it, from the caller's value on the
+hot path and from `item_keys` otherwise.
+
+**There is no default partition.** An insert past the last partition fails
+hard, deliberately: a catch-all would hide the shortfall until it was itself
+undroppable. `archive/partitions.py` keeps a 14-day lookahead and raises a
+`PartitionShortfall` alert below 7.
+
+#### Foreign keys, and why there are none left
+
+A `DROP TABLE partition` fails while any row references it, so every foreign
+key into `items` had to go. Each one, with its policy:
+
+| Foreign key | Policy | Why |
+|---|---|---|
+| `item_categories.item_id` | dropped, cascade-partition | dropped as a unit with the same day |
+| `routing_decisions.item_id` | dropped, cascade-partition | same |
+| `deliveries.item_id` | dropped, cascade-partition | same |
+| `error_events.item_id` | **dropped, column kept** | an event lives 365 days and must outlive the item it points at |
+| `items.duplicate_of` (self) | **dropped, column kept** | may point at an already-archived item; `item_keys` is the tombstone |
+| `items.fetch_id` | **dropped, column kept** | also removes a random read on every insert, and is what makes `fetches` prunable |
+| `items.spec_hash` | **kept** | outbound to `spec_versions`, which is tiny and never purged, so it blocks nothing |
+
+#### The index set
+
+Reduced from 7 to 2 on `items`. Dropped: `UNIQUE (source_name, source_item_id)`
+(illegal under partitioning, and the guarantee moved to `item_keys`),
+`(canonical_url)` and `(content_hash)` (served by `item_keys`), and
+`(published_utc DESC)` (no query uses it). Kept: `(first_seen_utc DESC)` for
+the backlog and export range scans, and `(source_name, first_seen_utc DESC)`
+for `stats.source_stats`.
+
 ### Dedupe (0005)
 
 | Table | Purpose |

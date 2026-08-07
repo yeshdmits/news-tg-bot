@@ -382,12 +382,12 @@ class Corpus:
                 it["duplicate_of"], it["copyright_holder"], self.spec_hash,
             ))
             for ordinal, category in enumerate(it["categories"]):
-                category_rows.append((it["item_id"], ordinal, category))
+                category_rows.append((it["item_id"], it["first_seen_utc"], ordinal, category))
             for channel in it["channels"]:
                 decision = "duplicate" if it["duplicate_of"] else _weighted(self.rng, DECISION_MIX)
                 if decision in RETAINED_DECISIONS:
                     decision_rows.append((
-                        it["item_id"], channel, decision,
+                        it["item_id"], channel, it["first_seen_utc"], decision,
                         str(it["duplicate_of"]) if it["duplicate_of"] else None,
                         it["first_seen_utc"],
                     ))
@@ -403,6 +403,41 @@ class Corpus:
 
 
 # --- writing ---------------------------------------------------------------
+
+
+def _dependants_are_partitioned(conn: psycopg.Connection) -> bool:
+    """Whether migration 0006 has run. The seeder populates either shape so a
+    migration can be tested against a realistic corpus before it is applied."""
+    row = conn.execute(
+        "SELECT count(*) FROM information_schema.columns "
+        "WHERE table_name = 'item_categories' AND column_name = 'first_seen_utc'"
+    ).fetchone()
+    return bool(row[0])
+
+
+def _ensure_backdated_partitions(conn: psycopg.Connection, corpus: Corpus) -> int:
+    """Create partitions covering the backdated span, if items is partitioned.
+
+    There is no default partition by design (see archive/partitions.py), so an
+    insert into a day with no partition fails hard — which is what should
+    happen in production, and what a backdating tool has to provision for
+    itself. A no-op before migration 0006.
+    """
+    # This connection has no dict row factory, so index positionally.
+    partitioned = conn.execute(
+        "SELECT relkind = 'p' FROM pg_class WHERE relname = 'items'"
+    ).fetchone()
+    if not partitioned or not partitioned[0]:
+        return 0
+
+    from archive.partitions import partition_ddl
+
+    statements = partition_ddl(
+        corpus.start.date(), corpus.end.date(), lookahead=1
+    )
+    for statement in statements:
+        conn.execute(statement)
+    return len(statements)
 
 
 def _write_prerequisites(conn: psycopg.Connection, corpus: Corpus) -> None:
@@ -450,21 +485,26 @@ def _flush(conn: psycopg.Connection, fetch_rows, item_rows, key_rows,
             for row in key_rows:
                 cp.write_row(row)
 
-        with cur.copy(
-            "COPY item_categories (item_id, ordinal, category) FROM STDIN (FORMAT BINARY)"
-        ) as cp:
-            cp.set_types(("uuid", "int4", "text"))
+        partitioned = _dependants_are_partitioned(conn)
+        cat_cols = "item_id, first_seen_utc, ordinal, category" if partitioned \
+            else "item_id, ordinal, category"
+        cat_types = ("uuid", "timestamptz", "int4", "text") if partitioned \
+            else ("uuid", "int4", "text")
+        with cur.copy(f"COPY item_categories ({cat_cols}) FROM STDIN (FORMAT BINARY)") as cp:
+            cp.set_types(cat_types)
             for row in category_rows:
-                cp.write_row(row)
+                cp.write_row(row if partitioned else (row[0], row[2], row[3]))
 
         # routing_decisions.decision is an enum; text COPY keeps psycopg out of
         # enum-OID lookup and is fast enough for this table's width.
-        with cur.copy(
-            "COPY routing_decisions (item_id, channel_name, decision, reason, decided_utc) "
-            "FROM STDIN"
-        ) as cp:
+        dec_cols = (
+            "item_id, channel_name, first_seen_utc, decision, reason, decided_utc"
+            if partitioned
+            else "item_id, channel_name, decision, reason, decided_utc"
+        )
+        with cur.copy(f"COPY routing_decisions ({dec_cols}) FROM STDIN") as cp:
             for row in decision_rows:
-                cp.write_row(row)
+                cp.write_row(row if partitioned else (row[0], row[1], row[3], row[4], row[5]))
 
 
 def _flush_routing_stats(conn: psycopg.Connection, counts: dict) -> None:
@@ -521,6 +561,7 @@ def main(argv: list[str] | None = None) -> int:
         # 20k rows can exceed it on a cold cache.
         conn.execute("SET statement_timeout = 0")
         conn.execute("SET idle_in_transaction_session_timeout = 0")
+        _ensure_backdated_partitions(conn, corpus)
         _write_prerequisites(conn, corpus)
         for fetch_rows, item_rows, key_rows, category_rows, decision_rows in corpus.chunks():
             with conn.transaction():

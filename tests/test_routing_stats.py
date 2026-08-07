@@ -46,6 +46,18 @@ def _item(db, spec_hash, *, source="src-1", suffix="1"):
          "https://e.org/a", "https://e.org/a", timestamp_of(item_id),
          b"\x00" * 32, 1, spec_hash),
     )
+    # Production never writes an item without its key (writer.store_item claims
+    # the key first), and the partition-key lookup resolves through item_keys,
+    # so a fixture that skipped it would not be exercising the real shape.
+    db.execute(
+        """
+        INSERT INTO item_keys (source_name, source_item_id, item_id, content_hash,
+                               title_simhash, band0, band1, band2, band3,
+                               canonical_url, first_seen_utc)
+        VALUES (%s, %s, %s, %s, 1, 0, 0, 0, 0, 'https://e.org/a', %s)
+        """,
+        (source, f"{source}:{suffix}", item_id, b"\x00" * 32, timestamp_of(item_id)),
+    )
     return item_id
 
 

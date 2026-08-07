@@ -80,6 +80,32 @@ GATED_REASON_PREFIX = "gated:"
 RETAINED_DECISIONS = frozenset({"routed", "rate_limited", "duplicate"})
 
 
+def _item_day(
+    conn: psycopg.Connection, item_id: UUID, first_seen_utc: datetime | None
+) -> datetime:
+    """The partition key for an item's dependant rows.
+
+    Every partitioned dependant is keyed on a copy of ``items.first_seen_utc``,
+    and **every lookup must supply it**: without it the planner cannot prune and
+    touches every partition. Measured on a 24-partition database, the
+    delivery-claim path goes from 1 scan node and 187 buffers to 24 and 1229 —
+    and that path runs for every routed item.
+
+    Callers on the hot path pass the value they already hold. The fallback
+    reads ``item_keys`` rather than ``items``: it is indexed on ``item_id`` and
+    it outlives the item, so this still resolves after the item's day has been
+    archived and dropped.
+    """
+    if first_seen_utc is not None:
+        return first_seen_utc
+    row = conn.execute(
+        "SELECT first_seen_utc FROM item_keys WHERE item_id = %s", (item_id,)
+    ).fetchone()
+    if row is None:
+        raise LookupError(f"no item_keys row for {item_id}: cannot locate its partition")
+    return row["first_seen_utc"]
+
+
 def try_acquire_post_slot(
     conn: psycopg.Connection, channel_name: str, post_interval_min: int
 ) -> bool:
@@ -243,6 +269,11 @@ def store_item(
     if claimed_by is not None:
         return claimed_by, False
 
+    # No ON CONFLICT: the unique constraint it used to name is gone from the
+    # partitioned table by design (it would have to include the partition key,
+    # and such a constraint silently permits the same article in a later
+    # partition). The key claim above already decided this is a new item, so a
+    # conflict here would be a bug worth hearing about rather than swallowing.
     conn.execute(
         """
         INSERT INTO items
@@ -251,7 +282,6 @@ def store_item(
            published_raw, published_utc, first_seen_utc, content_hash,
            title_simhash, duplicate_of, copyright_holder, spec_hash)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (source_name, source_item_id) DO NOTHING
         """,
         (
             item_id, item.source_name, fetch_id, item.source_item_id, item.raw_xml,
@@ -262,8 +292,9 @@ def store_item(
     )
     for ordinal, category in enumerate(item.categories):
         conn.execute(
-            "INSERT INTO item_categories (item_id, ordinal, category) VALUES (%s, %s, %s)",
-            (item_id, ordinal, category),
+            "INSERT INTO item_categories (item_id, first_seen_utc, ordinal, category) "
+            "VALUES (%s, %s, %s, %s)",
+            (item_id, first_seen_utc, ordinal, category),
         )
     return item_id, True
 
@@ -276,6 +307,7 @@ def record_routing_decision(
     reason: str | None = None,
     matched_clause: dict[str, Any] | None = None,
     decided_utc: datetime | None = None,
+    first_seen_utc: datetime | None = None,
 ) -> None:
     """Record one (item, channel) outcome.
 
@@ -295,11 +327,13 @@ def record_routing_decision(
         conn.execute(
             """
             INSERT INTO routing_decisions
-              (item_id, channel_name, decision, reason, matched_clause, decided_utc)
-            VALUES (%s, %s, %s, %s, %s, COALESCE(%s, now()))
-            ON CONFLICT (item_id, channel_name) DO NOTHING
+              (item_id, channel_name, first_seen_utc, decision, reason,
+               matched_clause, decided_utc)
+            VALUES (%s, %s, %s, %s, %s, %s, COALESCE(%s, now()))
+            ON CONFLICT (item_id, channel_name, first_seen_utc) DO NOTHING
             """,
-            (item_id, channel_name, decision.value, reason,
+            (item_id, channel_name, _item_day(conn, item_id, first_seen_utc),
+             decision.value, reason,
              Jsonb(matched_clause) if matched_clause is not None else None,
              decided_utc),
         )
@@ -322,6 +356,7 @@ def update_routing_decision(
     channel_name: str,
     decision: Decision,
     reason: str | None = None,
+    first_seen_utc: datetime | None = None,
 ) -> None:
     """Re-decide an existing (item, channel): the routed → rate_limited
     transition under drop_oldest, the backlog age-out to too_old, and the
@@ -338,19 +373,20 @@ def update_routing_decision(
             """
             UPDATE routing_decisions
             SET decision = %s, reason = %s, decided_utc = now()
-            WHERE item_id = %s AND channel_name = %s
+            WHERE item_id = %s AND channel_name = %s AND first_seen_utc = %s
             """,
-            (decision.value, reason, item_id, channel_name),
+            (decision.value, reason, item_id, channel_name,
+             _item_day(conn, item_id, first_seen_utc)),
         )
         return
 
     deleted = conn.execute(
         """
         DELETE FROM routing_decisions
-        WHERE item_id = %s AND channel_name = %s
+        WHERE item_id = %s AND channel_name = %s AND first_seen_utc = %s
         RETURNING decided_utc
         """,
-        (item_id, channel_name),
+        (item_id, channel_name, _item_day(conn, item_id, first_seen_utc)),
     ).fetchone()
     # Only count it if a row actually moved: without this, a retried post phase
     # would increment the counter on every pass over an already-retired item.
@@ -366,16 +402,20 @@ def update_routing_decision(
         )
 
 
-def mark_posted_after_gate(conn: psycopg.Connection, item_id: UUID, channel_name: str) -> None:
+def mark_posted_after_gate(
+    conn: psycopg.Connection, item_id: UUID, channel_name: str,
+    first_seen_utc: datetime | None = None,
+) -> None:
     """A gated (rate_limited) item that actually posted reads 'routed' again,
     so the archive's final word matches what happened."""
     conn.execute(
         """
         UPDATE routing_decisions
         SET decision = 'routed', reason = NULL, decided_utc = now()
-        WHERE item_id = %s AND channel_name = %s AND decision = 'rate_limited'
+        WHERE item_id = %s AND channel_name = %s AND first_seen_utc = %s
+          AND decision = 'rate_limited'
         """,
-        (item_id, channel_name),
+        (item_id, channel_name, _item_day(conn, item_id, first_seen_utc)),
     )
 
 
@@ -390,24 +430,33 @@ def record_delivery(
     posted_utc: datetime | None = None,
     attempt: int = 1,
     error: str | None = None,
+    first_seen_utc: datetime | None = None,
 ) -> None:
     """Upsert the delivery outcome for (item, channel); a retry overwrites the
-    status and increments the stored attempt counter."""
+    status and increments the stored attempt counter.
+
+    The conflict target includes ``first_seen_utc`` because the table is
+    partitioned on it, and it is a **copy of the item's** value rather than
+    ``now()`` — that is what keeps the three-column target exactly equivalent
+    to the old two-column one. A clock-derived column here would let a retried
+    claim evaluate a fresh timestamp, miss the conflict, and post the same item
+    to the same channel twice.
+    """
     conn.execute(
         """
         INSERT INTO deliveries
-          (item_id, channel_name, chat_id, telegram_message_id, posted_utc,
-           status, attempt, error)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (item_id, channel_name) DO UPDATE SET
+          (item_id, channel_name, first_seen_utc, chat_id, telegram_message_id,
+           posted_utc, status, attempt, error)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (item_id, channel_name, first_seen_utc) DO UPDATE SET
           telegram_message_id = EXCLUDED.telegram_message_id,
           posted_utc = EXCLUDED.posted_utc,
           status = EXCLUDED.status,
           attempt = deliveries.attempt + 1,
           error = EXCLUDED.error
         """,
-        (item_id, channel_name, chat_id, telegram_message_id, posted_utc,
-         status.value, attempt, error),
+        (item_id, channel_name, _item_day(conn, item_id, first_seen_utc), chat_id,
+         telegram_message_id, posted_utc, status.value, attempt, error),
     )
 
 
@@ -455,9 +504,14 @@ def get_postable_backlog(conn: psycopg.Connection, channel_name: str) -> list[It
         f"""
         SELECT {_ITEM_COLUMNS}
         FROM items i
-        JOIN routing_decisions rd ON rd.item_id = i.item_id
+        -- Joining on first_seen_utc as well as item_id lets the planner
+        -- prune both sides to the same partitions instead of scanning every
+        -- one of them.
+        JOIN routing_decisions rd
+          ON rd.item_id = i.item_id AND rd.first_seen_utc = i.first_seen_utc
         LEFT JOIN deliveries d
-          ON d.item_id = i.item_id AND d.channel_name = rd.channel_name
+          ON d.item_id = i.item_id AND d.first_seen_utc = i.first_seen_utc
+         AND d.channel_name = rd.channel_name
         WHERE rd.channel_name = %s
           AND (rd.decision = 'routed'
                OR (rd.decision = 'rate_limited' AND rd.reason LIKE 'gated:%%'))

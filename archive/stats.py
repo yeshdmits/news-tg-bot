@@ -29,15 +29,18 @@ SELECT
   i.published_utc, i.first_seen_utc, encode(i.content_hash, 'hex') AS content_hash_hex,
   i.title_simhash, i.duplicate_of, i.copyright_holder, i.spec_hash AS item_spec_hash,
   (SELECT string_agg(c.category, '|' ORDER BY c.ordinal)
-     FROM item_categories c WHERE c.item_id = i.item_id) AS categories,
+     FROM item_categories c
+     WHERE c.item_id = i.item_id AND c.first_seen_utc = i.first_seen_utc) AS categories,
   rd.channel_name, rd.decision::text AS decision, rd.reason AS decision_reason,
   rd.matched_clause::text AS matched_clause, rd.decided_utc,
   d.status::text AS delivery_status, d.telegram_message_id, d.posted_utc,
   d.attempt AS delivery_attempt, d.error AS delivery_error
 FROM items i
-LEFT JOIN routing_decisions rd ON rd.item_id = i.item_id
+LEFT JOIN routing_decisions rd
+  ON rd.item_id = i.item_id AND rd.first_seen_utc = i.first_seen_utc
 LEFT JOIN deliveries d
-  ON d.item_id = rd.item_id AND d.channel_name = rd.channel_name
+  ON d.item_id = rd.item_id AND d.first_seen_utc = rd.first_seen_utc
+ AND d.channel_name = rd.channel_name
 WHERE i.first_seen_utc >= %s AND i.first_seen_utc < %s
 ORDER BY i.first_seen_utc, i.item_id, rd.channel_name
 """
@@ -171,7 +174,8 @@ def backlog_sizes(conn: psycopg.Connection) -> list[dict[str, Any]]:
         SELECT rd.channel_name, count(*) AS n
         FROM routing_decisions rd
         LEFT JOIN deliveries d
-          ON d.item_id = rd.item_id AND d.channel_name = rd.channel_name
+          ON d.item_id = rd.item_id AND d.first_seen_utc = rd.first_seen_utc
+         AND d.channel_name = rd.channel_name
         WHERE rd.decision = 'routed' AND d.item_id IS NULL
         GROUP BY rd.channel_name
         ORDER BY rd.channel_name
