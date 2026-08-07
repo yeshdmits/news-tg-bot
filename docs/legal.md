@@ -23,7 +23,9 @@ Each Telegram post contains: the item **title**, a **lead** truncated to
 `lead_max_length`, a **link to the original article**, a source hashtag, and
 — depending on `post_style` — the article's own image
 (`photo_full`) or Telegram's link preview. The full article body is never
-fetched or republished; only what the publisher put in their feed.
+fetched or republished; only what the publisher put in their feed. The lead
+is the one part you can switch off: `post_style: link_preview_title_only`
+republishes the headline and the link and nothing else.
 
 A source configured with an empty `channels` list is
 [archive-only](configuration.md#archive-only-sources): it is stored under
@@ -57,6 +59,7 @@ substitutes for permission to republish.
 |---|---|
 | `lead_max_length` (default 300) | Longer excerpts republish more of the publisher's text. |
 | `post_style: photo_full` | Rehosts the publisher's image into your channel (vs `link_preview`, where Telegram renders a preview, or `text_only`). |
+| `post_style: link_preview_title_only` | The one option here that *reduces* exposure: no excerpt of the publisher's text is republished, only the headline and the link. The lightest-touch style available. |
 | `translate_lead: true` | Creates and stores derivative works (translations). |
 | `mapping.copyright` | Captures the publisher's copyright notice alongside each item — configure it where the feed provides one. |
 | `cli export` | Moves archived third-party content out of the database into files; distributing such exports is a further act of redistribution. |
