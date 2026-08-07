@@ -21,7 +21,8 @@ Legend for the "belongs in" column:
 
 | Kind of value | Belongs in |
 |---|---|
-| Live spec (`spec.json`), incl. real Telegram chat and channel ids | untracked file via env `SPEC_PATH`, or env `SPEC_JSON`/`SPEC_URL` (cloud: Key Vault secret `spec-json` injected as `SPEC_JSON`). The tracked example uses only the designated fake `9999000` id block. |
+| Live spec (`spec.json`), incl. real Telegram chat and channel ids | untracked file via env `SPEC_PATH`, or env `SPEC_JSON`/`SPEC_URL` (cloud: fetched from the URL in Key Vault secret `spec-url`, injected as `SPEC_URL`). The tracked example uses only the designated fake `9999000` id block. |
+| URL the live spec is served from | tfvar `spec_url` (required, no default) → Key Vault secret `spec-url`. Never tracked: an operator's host or account name in that URL is exactly what `scripts/check-neutral.sh` exists to catch. |
 | Telegram bot token, webhook secret, DeepL key | env (cloud: Key Vault secrets) |
 | Azure subscription id | tfvar `subscription_id` (required, no default) |
 | CI service-principal object id | tfvar `ci_principal_id` (default `""` = role grant disabled) |

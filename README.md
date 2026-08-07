@@ -96,8 +96,8 @@ Details in [docs/configuration.md](docs/configuration.md).
 ## Deployment in one paragraph
 
 Terraform (`deploy/terraform/`) provisions a deliberately cheap Azure stack:
-one burstable Postgres, a Key Vault holding every secret (including the
-configuration itself, injected as `SPEC_JSON`), and three Container Apps
+one burstable Postgres, a Key Vault holding every secret (including the URL
+the configuration is fetched from, injected as `SPEC_URL`), and three Container Apps
 units built from the same image — a cron fetch job, a scale-to-zero webhook
 app, and a manual migration job. Every account-specific value is a variable;
 nothing in the repository points at anyone's subscription. GitHub Actions

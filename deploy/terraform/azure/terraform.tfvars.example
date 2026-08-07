@@ -27,11 +27,14 @@ telegram_webhook_secret = "<openssl rand -hex 32>"
 translate_api_key       = "<DeepL key, or empty with translate_provider = \"none\">"
 healthcheck_url         = "https://hc-ping.com/<uuid>"
 
-# Your application configuration. Copy spec.example.json here and edit:
-#   cp ../../../spec.example.json spec.local.json
-# The file is gitignored; its content is pushed to Key Vault and injected
-# into the runtime as SPEC_JSON.
-# spec_json_file = "spec.local.json"
+# Where your application configuration is served from. The runtime fetches
+# this once at startup (https only), so editing the spec there updates the
+# deployment on the fetch job's next run — no apply, no image rebuild. Any
+# static host works: a gist, a blob with a SAS token, your own web server.
+# Treat the URL as a credential: it is stored as the Key Vault spec-url
+# secret because whoever holds it can read the spec, which names your
+# private chat ids.
+spec_url = "https://<host>/<path>/spec.json"
 
 # --- optional ---------------------------------------------------------------
 

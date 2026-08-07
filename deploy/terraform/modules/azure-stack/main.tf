@@ -97,8 +97,9 @@ resource "azurerm_role_assignment" "deployer_kv_officer" {
 
 # value_wo is write-only: the value is sent to Key Vault and never stored in
 # state or plan. The trade-offs: Terraform cannot detect out-of-band edits
-# (`az keyvault secret set` sticks — a feature for spec updates), and a
-# changed variable only pushes when secrets_wo_version is bumped.
+# (`az keyvault secret set` sticks, so a rotation done by hand survives an
+# apply), and a changed variable only pushes when secrets_wo_version is
+# bumped.
 resource "azurerm_key_vault_secret" "database_url" {
   name             = "database-url"
   key_vault_id     = azurerm_key_vault.kv.id
@@ -139,12 +140,14 @@ resource "azurerm_key_vault_secret" "healthcheck_url" {
   depends_on       = [azurerm_role_assignment.deployer_kv_officer]
 }
 
-# The application configuration itself is a secret (it names private chat
-# ids). The runtime reads it as SPEC_JSON; the image carries no config.
-resource "azurerm_key_vault_secret" "spec_json" {
-  name             = "spec-json"
+# The configuration is not stored here — only the URL the runtime fetches it
+# from, which is itself the credential (whoever has it can read the spec, and
+# the spec names private chat ids). Keeping the config out of Key Vault is the
+# point: it can then be edited at the source without a Terraform run.
+resource "azurerm_key_vault_secret" "spec_url" {
+  name             = "spec-url"
   key_vault_id     = azurerm_key_vault.kv.id
-  value_wo         = var.spec_json
+  value_wo         = var.spec_url
   value_wo_version = var.secrets_wo_version
   depends_on       = [azurerm_role_assignment.deployer_kv_officer]
 }
@@ -276,9 +279,9 @@ resource "azurerm_container_app" "bot" {
     key_vault_secret_id = azurerm_key_vault_secret.webhook_secret.versionless_id
   }
   secret {
-    name                = "spec-json"
+    name                = "spec-url"
     identity            = azurerm_user_assigned_identity.runtime.id
-    key_vault_secret_id = azurerm_key_vault_secret.spec_json.versionless_id
+    key_vault_secret_id = azurerm_key_vault_secret.spec_url.versionless_id
   }
 
   template {
@@ -306,8 +309,8 @@ resource "azurerm_container_app" "bot" {
         secret_name = "webhook-secret"
       }
       env {
-        name        = "SPEC_JSON"
-        secret_name = "spec-json"
+        name        = "SPEC_URL"
+        secret_name = "spec-url"
       }
       env {
         name  = "DRY_RUN"
@@ -373,9 +376,9 @@ resource "azurerm_container_app_job" "fetch" {
     key_vault_secret_id = azurerm_key_vault_secret.healthcheck_url.versionless_id
   }
   secret {
-    name                = "spec-json"
+    name                = "spec-url"
     identity            = azurerm_user_assigned_identity.runtime.id
-    key_vault_secret_id = azurerm_key_vault_secret.spec_json.versionless_id
+    key_vault_secret_id = azurerm_key_vault_secret.spec_url.versionless_id
   }
 
   template {
@@ -396,8 +399,8 @@ resource "azurerm_container_app_job" "fetch" {
         secret_name = "telegram-bot-token"
       }
       env {
-        name        = "SPEC_JSON"
-        secret_name = "spec-json"
+        name        = "SPEC_URL"
+        secret_name = "spec-url"
       }
       env {
         name  = "DRY_RUN"
@@ -465,9 +468,9 @@ resource "azurerm_container_app_job" "migrate" {
     key_vault_secret_id = azurerm_key_vault_secret.webhook_secret.versionless_id
   }
   secret {
-    name                = "spec-json"
+    name                = "spec-url"
     identity            = azurerm_user_assigned_identity.runtime.id
-    key_vault_secret_id = azurerm_key_vault_secret.spec_json.versionless_id
+    key_vault_secret_id = azurerm_key_vault_secret.spec_url.versionless_id
   }
 
   template {
@@ -496,8 +499,8 @@ resource "azurerm_container_app_job" "migrate" {
         value = "https://${azurerm_container_app.bot.ingress[0].fqdn}/telegram/webhook"
       }
       env {
-        name        = "SPEC_JSON"
-        secret_name = "spec-json"
+        name        = "SPEC_URL"
+        secret_name = "spec-url"
       }
     }
   }

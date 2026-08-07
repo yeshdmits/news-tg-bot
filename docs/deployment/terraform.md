@@ -60,8 +60,8 @@ and fill it in.
 | `telegram_webhook_secret` | yes | — | e.g. `openssl rand -hex 32`. |
 | `translate_api_key` | yes | — | DeepL key (empty is fine with `translate_provider = "none"`). |
 | `healthcheck_url` | yes | — | Deadman ping URL (the URL itself is the credential). |
-| `spec_json_file` | no | `spec.local.json` | Path to your spec (gitignored copy of `spec.example.json`); its content becomes the `spec-json` Key Vault secret. |
-| `secrets_wo_version` | no | `1` | Bump after changing any secret value (including the spec file) to push it to Key Vault — see below. |
+| `spec_url` | yes | — | `https://` URL serving your spec; becomes the `spec-url` Key Vault secret. The URL itself is the credential. Rejected at plan time if not `https://`. |
+| `secrets_wo_version` | no | `1` | Bump after changing any secret value to push it to Key Vault — see below. Spec edits are **not** one of those. |
 | `dry_run` | no | `"true"` | See below — the go-live switch. |
 | `translate_provider` | no | `"deepl"` | `none` disables translation. |
 | `client_ip` | no | `""` | Optional developer IP allowed through the Postgres firewall. Empty = no rule. |
@@ -83,15 +83,24 @@ stays private. The container apps reference the secrets by
 `key_vault_secret_id` and resolve them through the `<name_prefix>-runtime`
 user-assigned identity.
 
-The spec itself is the `spec-json` secret, injected as the `SPEC_JSON` env
-var. Two supported ways to update it:
+The spec is **not** in Key Vault. What is stored there is `spec-url`, the
+`https://` address the runtime fetches the spec from at startup, injected as
+the `SPEC_URL` env var. It is a secret because whoever holds the URL can read
+the spec, which names your private chat ids.
 
-- Bump `secrets_wo_version` and `terraform apply` — write-only arguments do
-  not diff, so the version bump is what forces the rewrite.
-- Out-of-band:
-  `az keyvault secret set --vault-name <kv> --name spec-json --file spec.local.json`.
-  The fetch job picks it up on its next run, and Terraform will **not**
-  revert it (write-only args don't diff against the vault).
+Updating the spec is therefore not a Terraform operation at all: edit it at
+the URL, and the fetch job picks it up on its next run. Nothing else in this
+document applies to a spec change. Validate before you publish — an
+unreachable or invalid spec is fatal for all three units:
+
+```bash
+python -m cli validate --spec spec.json        # the local working copy
+# publish it to whatever serves spec_url, then confirm what the cloud will get:
+SPEC_URL="https://<host>/<path>/spec.json" python -m cli validate
+```
+
+Changing the URL itself *is* a Terraform change: update `spec_url`, bump
+`secrets_wo_version`, and apply.
 
 ## Plan and apply
 
@@ -155,8 +164,9 @@ Consequences of the split:
   provider treats the env set as one attribute
   (hashicorp/terraform-provider-azurerm#30049), so a partial ignore would
   mask drift for every variable.
-- Changing any spec/config value is a Terraform change; changing code is a
-  CI deploy. If both change, apply Terraform first, then let CI roll the
+- Changing infrastructure or a secret is a Terraform change; changing code
+  is a CI deploy; changing the spec is neither — it is an edit at `spec_url`.
+  If more than one changes, apply Terraform first, then let CI roll the
   image.
 
 ## Postgres specifics

@@ -23,9 +23,9 @@ terraform apply
 
 Required variables: `subscription_id`, `name_prefix` (every resource name
 derives from it), `key_vault_name` (globally unique), `image`
-(e.g. `ghcr.io/<owner>/<repo>:latest`), plus the secrets. Optional:
-`spec_json_file` (default `spec.local.json`), `secrets_wo_version` (bump to
-push changed secrets), `ci_principal_id` (empty disables the CI grant).
+(e.g. `ghcr.io/<owner>/<repo>:latest`), `spec_url` (the `https://` address
+your spec is served from), plus the secrets. Optional: `secrets_wo_version`
+(bump to push changed secrets), `ci_principal_id` (empty disables the CI grant).
 Full list: [docs/deployment/terraform.md](../../docs/deployment/terraform.md).
 
 After a from-scratch apply, run the migration job once to create the schema

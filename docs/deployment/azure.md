@@ -17,15 +17,19 @@ below):
 | Container App Job | `<name_prefix>-fetch` | `python -m cli run --once` — cron `*/5 * * * *`, timeout 280 s, no retries, parallelism 1. |
 | Container App Job | `<name_prefix>-migrate` | `alembic upgrade head && python -m cli register-webhook` — manual trigger, started by CI. |
 | PostgreSQL Flexible Server | `<name_prefix>-pg` | B1ms burstable, Postgres 17, 32 GB, 7-day backups, public endpoint behind the server firewall. |
-| Key Vault | `key_vault_name` var | Holds every runtime secret, including the spec itself (`spec-json`). |
+| Key Vault | `key_vault_name` var | Holds every runtime secret, including the URL the spec is fetched from (`spec-url`). |
 | User-assigned identity | `<name_prefix>-runtime` | Attached to all three compute units; grants them read access to the Key Vault secrets. |
 
 All three compute units run the **same image** with different commands.
 Secrets (database URL, bot token, webhook secret, DeepL key) live in the
 Key Vault and reach the units as Container Apps secret references resolved
-through the user-assigned identity. The spec is not baked into the image:
-it is the `spec-json` Key Vault secret, injected as the `SPEC_JSON`
-environment variable.
+through the user-assigned identity. The spec is neither baked into the image
+nor stored in Azure: each unit fetches it at startup from the URL in the
+`spec-url` Key Vault secret, injected as the `SPEC_URL` environment
+variable. Editing the spec at that URL updates the deployment on the fetch
+job's next run — no apply, no image rebuild. The cost of that convenience is
+a startup dependency on the host serving it: a failed fetch aborts the unit
+rather than falling back (see [Configuration](../configuration.md)).
 
 ## How CI deploys
 

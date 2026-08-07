@@ -54,7 +54,7 @@ module "stack" {
   telegram_webhook_secret = var.telegram_webhook_secret
   translate_api_key       = var.translate_api_key
   healthcheck_url         = var.healthcheck_url
-  spec_json               = file(var.spec_json_file)
+  spec_url                = var.spec_url
   secrets_wo_version      = var.secrets_wo_version
   dry_run                 = var.dry_run
   translate_provider      = var.translate_provider
@@ -120,16 +120,23 @@ variable "healthcheck_url" {
   sensitive = true
 }
 
-variable "spec_json_file" {
+variable "spec_url" {
   type        = string
-  default     = "spec.local.json"
-  description = "Path to your spec JSON (gitignored); its content becomes the Key Vault spec-json secret injected as SPEC_JSON"
+  sensitive   = true
+  description = "https:// URL serving your spec JSON; becomes the Key Vault spec-url secret injected as SPEC_URL. Editing the spec at that URL needs no Terraform run."
+
+  # Mirrors the runtime's own guard (specsource.py) so a plain-http value
+  # fails at plan time rather than at container start.
+  validation {
+    condition     = startswith(var.spec_url, "https://")
+    error_message = "spec_url must be https:// — the runtime refuses to fetch anything else."
+  }
 }
 
 variable "secrets_wo_version" {
   type        = number
   default     = 1
-  description = "Bump after changing any secret value (including the spec file) to push it to Key Vault"
+  description = "Bump after changing any secret value to push it to Key Vault"
 }
 
 variable "dry_run" {
