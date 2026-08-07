@@ -20,10 +20,12 @@ import httpx
 import psycopg
 import structlog
 
-from archive import dedupe, writer
+from archive import dedupe, partitions, retention, writer
 from archive import errors as errdb
 from archive.db import transaction
+from archive.ids import timestamp_of
 from archive.models import Decision, DeliveryStatus, SourceState
+from archive.retention import RetentionWindows
 from feedspec.loader import LoadedSpec
 from feedspec.model import SourceDef, parse_cold_start
 from feedspec.resolve import (
@@ -65,6 +67,7 @@ class Deps:
     base_dir: str = "."
     alerts: AlertEngine | None = None
     healthcheck_url: str = ""
+    retention_windows: RetentionWindows = dataclass_field(default_factory=RetentionWindows)
     # filled by run_once from the spec: (source_name, channel_name) → EffectiveConfig
     pairs: dict[tuple[str, str], EffectiveConfig] = dataclass_field(default_factory=dict)
 
@@ -299,8 +302,11 @@ def _store_and_decide(
     conn = deps.conn
     spec = deps.loaded.spec
     canon = dedupe.canonical_url(item.url)
+    # item_keys, not items: it carries the uniqueness guarantee once items is
+    # partitioned, and outlives the item itself, so a feed republishing an
+    # article whose row has already been archived is still recognised.
     already = conn.execute(
-        "SELECT item_id FROM items WHERE source_name = %s AND source_item_id = %s",
+        "SELECT item_id FROM item_keys WHERE source_name = %s AND source_item_id = %s",
         (item.source_name, item.source_item_id),
     ).fetchone()
     if already:
@@ -337,6 +343,9 @@ def _store_and_decide(
         writer.record_routing_decision(
             conn, item_id, binding.name, route.decision,
             reason=route.reason, matched_clause=route.matched_clause,
+            # Free and exact: first_seen_utc *is* the id's embedded timestamp
+            # (archive/ids.py), so the partition key needs no lookup.
+            first_seen_utc=timestamp_of(item_id),
         )
     return 1
 
@@ -366,6 +375,7 @@ async def post_phase(deps: Deps, stats: RunStats) -> None:
                 writer.update_routing_decision(
                     conn, record.item_id, channel.name, Decision.TOO_OLD,
                     reason=f"aged out in backlog, max_age_min={channel.max_age_min}",
+                    first_seen_utc=record.first_seen_utc,
                 )
             else:
                 fresh.append(record)
@@ -381,6 +391,7 @@ async def post_phase(deps: Deps, stats: RunStats) -> None:
                     conn, record.item_id, channel.name, Decision.RATE_LIMITED,
                     reason=f"{writer.GATED_REASON_PREFIX} "
                            f"post_interval_min={channel.post_interval_min}",
+                    first_seen_utc=record.first_seen_utc,
                 )
             continue
         selection = select_for_channel(
@@ -393,13 +404,14 @@ async def post_phase(deps: Deps, stats: RunStats) -> None:
             now=now,
             source_order=source_order,
         )
+        records = {r.item_id: r for r in fresh}
         for candidate in selection.dropped:
             writer.update_routing_decision(
                 conn, candidate.item_id, channel.name, Decision.RATE_LIMITED,
                 reason=f"over max_posts_per_run={channel.max_posts_per_run} (drop_oldest)",
+                first_seen_utc=records[candidate.item_id].first_seen_utc,
             )
 
-        records = {r.item_id: r for r in fresh}
         for candidate in selection.to_post:
             record = records[candidate.item_id]
             cfg = deps.pairs.get((record.source_name, channel.name))
@@ -412,6 +424,7 @@ async def post_phase(deps: Deps, stats: RunStats) -> None:
                 writer.update_routing_decision(
                     conn, record.item_id, channel.name, Decision.CHANNEL_DISABLED,
                     reason="binding removed from spec",
+                    first_seen_utc=record.first_seen_utc,
                 )
                 continue
             effective_source = resolve_source(
@@ -442,9 +455,12 @@ async def post_phase(deps: Deps, stats: RunStats) -> None:
                     telegram_message_id=result.message_id,
                     posted_utc=_now() if result.ok else None,
                     error="dry_run" if result.dry_run else result.error,
+                    first_seen_utc=record.first_seen_utc,
                 )
                 if result.ok:
-                    writer.mark_posted_after_gate(conn, record.item_id, channel.name)
+                    writer.mark_posted_after_gate(
+                        conn, record.item_id, channel.name, record.first_seen_utc
+                    )
             if result.ok:
                 stats.posted += 1
             else:
@@ -536,7 +552,8 @@ async def run_execution(deps: Deps) -> ExecutionResult:
         if deps.alerts is not None:
             await deps.alerts.maybe_digest()
             deps.alerts.maybe_retention()
-        errdb.purge_seen_updates(deps.conn)
+        await _maintain_partitions(deps)
+        retention.run(deps.conn, deps.retention_windows)
         await _deadman_ping(deps)
         return ExecutionResult(acquired=True, stats=stats)
     finally:
@@ -546,6 +563,43 @@ async def run_execution(deps: Deps) -> ExecutionResult:
             )
         except psycopg.Error:
             pass  # session close releases it anyway
+
+
+async def _maintain_partitions(deps: Deps) -> None:
+    """Keep the partition lookahead topped up, and alert before it runs out.
+
+    Inserts fail hard once they run past the last partition — there is no
+    default partition, deliberately (archive/partitions.py) — so this is the
+    difference between a quiet top-up and ingest stopping dead. Cheap enough
+    to run every execution: a catalogue lookup and, most days, nothing.
+    """
+    try:
+        created = partitions.ensure_partitions(deps.conn)
+    except psycopg.Error as e:
+        log.error("partition_maintenance_failed", error=str(e))
+        await deps.report_error(
+            component="archive", error_class="PartitionMaintenanceFailed",
+            message=str(e), severity="critical",
+        )
+        return
+    if created:
+        log.info("partitions_created", count=created)
+
+    headroom = partitions.days_of_headroom(deps.conn)
+    if headroom < partitions.MINIMUM_LOOKAHEAD_DAYS:
+        # Alertable by design: ingest stops the moment this reaches zero, and
+        # nothing else in the system would notice it approaching.
+        await deps.report_error(
+            component="archive",
+            error_class="PartitionShortfall",
+            message=(
+                f"only {headroom} days of item partitions remain "
+                f"(minimum {partitions.MINIMUM_LOOKAHEAD_DAYS}); "
+                "ingest fails once this reaches zero"
+            ),
+            severity="critical",
+            detail={"days_remaining": headroom},
+        )
 
 
 async def run_forever(deps: Deps) -> None:
@@ -568,6 +622,11 @@ async def run_forever(deps: Deps) -> None:
         if deps.alerts is not None:
             await deps.alerts.maybe_digest()
             deps.alerts.maybe_retention()
+        await _maintain_partitions(deps)
+        # Long-running mode used to skip this entirely, so seen_updates grew
+        # without bound here while docs/data-model.md and ADR 0008 both claimed
+        # a 24 h purge "every execution" — true only of the --once path.
+        retention.run(deps.conn, deps.retention_windows)
         await _deadman_ping(deps)
         rows = deps.conn.execute(
             "SELECT min(next_fetch_utc) AS next FROM source_state"

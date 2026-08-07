@@ -89,6 +89,15 @@ single message before exiting with status 2.
 | `TELEGRAM_WEBHOOK_SECRET` | str | *(empty)* | `serve`, `register-webhook` | Compared against `X-Telegram-Bot-Api-Secret-Token` on every webhook request. **Empty rejects all webhook calls** (fail closed). |
 | `WEBHOOK_URL` | str | *(empty)* | `register-webhook` | Public HTTPS endpoint passed to Telegram's `setWebhook`. |
 | `PORT` | int | `8000` | — | `cli serve` listen port. A non-numeric value is reported as `CONFIG: PORT: not an integer` at startup. |
+| `SEEN_UPDATES_TTL_HOURS` | int | `24` | — | Webhook idempotency window. Purged every execution. Must be positive — a zero or negative value would delete the whole table on the next pass and is rejected at startup. |
+| `PARTITION_LOOKAHEAD_DAYS` | int | `14` | — | How far ahead daily partitions are pre-created. Ingest **fails hard** once it runs past the last partition — there is no default partition by design — so this is how long the system survives with maintenance broken. Below 7 days remaining raises a `PartitionShortfall` alert. |
+| `ITEM_KEYS_TTL_DAYS` | int | `30` | — | Dedupe-key retention. Deliberately longer than `ARCHIVE_RETENTION_DAYS` so dedupe survives the purge of the item itself; past this window a republished article is re-ingested as new. Must be positive. |
+| `FETCHES_TTL_DAYS` | int | `90` | — | Fetch audit-row retention. **Inert until migration 0006**: `items.fetch_id` references `fetches` until then, so the purge would fail on rows still referenced; it returns 0 rather than raising. Must be positive. |
+
+The error-table windows (`error_occurrences`, `alert_outbox`, `error_events`)
+live in the spec under [`errors.retention`](#errors), not here — they are
+policy rather than deployment. Every table's window is listed in one place:
+[docs/data-model.md](data-model.md#retention).
 
 Deployment-only variables — consumed by docker compose, CI, or Terraform,
 never by the application: `SPEC_FILE`, `IMAGE`, `POSTGRES_PASSWORD`,

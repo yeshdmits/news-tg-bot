@@ -70,10 +70,27 @@ def test_export_one_row_per_decision(db, seeded):
     assert by_id["a"]["decision"] == "routed"
     assert by_id["a"]["delivery_status"] == "sent"
     assert by_id["a"]["categories"] == "pr"
-    assert by_id["b"]["decision"] == "filtered_category"
+    # filtered_category is not retained since migration 0004: the item still
+    # exports, but its outcome lives in routing_stats as a per-day count and is
+    # deliberately not joinable back to the item.
+    assert by_id["b"]["decision"] is None
     assert by_id["b"]["delivery_status"] is None
     assert by_id["c"]["duplicate_of"] == seeded["a"]
     assert len(by_id["a"]["content_hash_hex"]) == 64
+
+
+def test_export_keeps_the_item_when_its_decision_became_a_counter(db, seeded):
+    """The item must not vanish from the export just because its outcome is no
+    longer per-item — 'store everything, export everything' still holds."""
+    rows = {r["source_item_id"]: r for r in export_rows(db, *_window())}
+    assert set(rows) == {"a", "b", "c"}
+    assert rows["b"]["title"]
+    assert rows["b"]["canonical_url"]
+
+    counted = db.execute(
+        "SELECT sum(n) AS n FROM routing_stats WHERE decision = 'filtered_category'"
+    ).fetchone()["n"]
+    assert counted == 1
 
 
 def test_export_window_filters(db, seeded):

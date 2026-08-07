@@ -205,7 +205,9 @@ def test_dedupe_window_expires(db, loaded_spec, spec_hash):
     with transaction(db):
         stale_id, _ = writer.store_item(db, fetch_id, stale, spec_hash, None)
     db.execute(
-        "UPDATE items SET first_seen_utc = %s WHERE item_id = %s",
+        # item_keys is where dedupe reads first_seen_utc from since migration
+        # 0005 — backdating items alone no longer moves the dedupe window.
+        "UPDATE item_keys SET first_seen_utc = %s WHERE item_id = %s",
         (NOW - timedelta(hours=100), stale_id),
     )
     canon = canonical_url("https://example.org/story")

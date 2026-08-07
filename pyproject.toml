@@ -28,6 +28,18 @@ dependencies = [
 dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.4", "httpx2>=2"]
 translate = ["deepl>=1.18"]
 export = ["pyarrow>=16"]
+# The object-storage archive: export to Parquet, read it back for training.
+# adlfs (fsspec) rather than duckdb's own azure extension, which installs
+# itself from the network at query time — CONTRIBUTING.md requires that no
+# test touches the network. DuckDB still runs the queries, over an Arrow
+# dataset that pyarrow+adlfs supplies. See docs/archive-format.md.
+archive = [
+    "azure-storage-blob>=12.20",
+    "pyarrow>=16",
+    "duckdb>=1.0",
+    "adlfs>=2024.2",
+    "zstandard>=0.22",
+]
 
 [tool.setuptools]
 packages = ["feedspec", "fetcher", "archive", "newsbot"]

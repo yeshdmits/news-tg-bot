@@ -6,8 +6,9 @@ Lives in archive because it is pure SQL over archive tables; cli.py renders.
 from __future__ import annotations
 
 import csv
+from collections.abc import Iterator
 from datetime import datetime
-from typing import Any, Iterator, TextIO
+from typing import Any, TextIO
 
 import psycopg
 
@@ -28,15 +29,18 @@ SELECT
   i.published_utc, i.first_seen_utc, encode(i.content_hash, 'hex') AS content_hash_hex,
   i.title_simhash, i.duplicate_of, i.copyright_holder, i.spec_hash AS item_spec_hash,
   (SELECT string_agg(c.category, '|' ORDER BY c.ordinal)
-     FROM item_categories c WHERE c.item_id = i.item_id) AS categories,
+     FROM item_categories c
+     WHERE c.item_id = i.item_id AND c.first_seen_utc = i.first_seen_utc) AS categories,
   rd.channel_name, rd.decision::text AS decision, rd.reason AS decision_reason,
   rd.matched_clause::text AS matched_clause, rd.decided_utc,
   d.status::text AS delivery_status, d.telegram_message_id, d.posted_utc,
   d.attempt AS delivery_attempt, d.error AS delivery_error
 FROM items i
-LEFT JOIN routing_decisions rd ON rd.item_id = i.item_id
+LEFT JOIN routing_decisions rd
+  ON rd.item_id = i.item_id AND rd.first_seen_utc = i.first_seen_utc
 LEFT JOIN deliveries d
-  ON d.item_id = rd.item_id AND d.channel_name = rd.channel_name
+  ON d.item_id = rd.item_id AND d.first_seen_utc = rd.first_seen_utc
+ AND d.channel_name = rd.channel_name
 WHERE i.first_seen_utc >= %s AND i.first_seen_utc < %s
 ORDER BY i.first_seen_utc, i.item_id, rd.channel_name
 """
@@ -46,7 +50,16 @@ def export_rows(
     conn: psycopg.Connection, from_utc: datetime, to_utc: datetime
 ) -> Iterator[dict[str, Any]]:
     """One row per (item, routing decision); undecided items still export
-    (store everything, export everything)."""
+    (store everything, export everything).
+
+    Since migration 0004 a NULL ``decision`` means one of two things, and this
+    view cannot tell them apart: the item genuinely had no bound channel
+    (archive-only source), or its outcome was one of the negative ones that is
+    now persisted as a counter in ``routing_stats`` rather than a per-item row.
+    Only ``routed``, ``rate_limited`` and ``duplicate`` still carry a decision
+    here. Per-day totals for the rest come from ``routing_stats``; they are not
+    joinable back to individual items, by design — see docs/data-model.md.
+    """
     with conn.cursor() as cursor:
         cursor.execute(_EXPORT_SQL, (from_utc, to_utc))
         for row in cursor:
@@ -118,11 +131,24 @@ def source_stats(conn: psycopg.Connection) -> list[dict[str, Any]]:
 
 
 def channel_stats(conn: psycopg.Connection) -> list[dict[str, Any]]:
-    """Routing decision counts per (channel, decision)."""
+    """Routing decision counts per (channel, decision).
+
+    Unions both halves of the split introduced in migration 0004: the retained
+    outcomes still have a row each, the rest are per-day counters. Reading only
+    `routing_decisions` here would under-report every negative outcome — which
+    is most of them — and make `cli stats` quietly wrong.
+    """
     return conn.execute(
         """
-        SELECT channel_name, decision::text AS decision, count(*) AS n
-        FROM routing_decisions
+        SELECT channel_name, decision, sum(n) AS n FROM (
+          SELECT channel_name, decision::text AS decision, count(*) AS n
+          FROM routing_decisions
+          GROUP BY channel_name, decision
+          UNION ALL
+          SELECT channel_name, decision::text AS decision, sum(n) AS n
+          FROM routing_stats
+          GROUP BY channel_name, decision
+        ) combined
         GROUP BY channel_name, decision
         ORDER BY channel_name, decision
         """
@@ -148,7 +174,8 @@ def backlog_sizes(conn: psycopg.Connection) -> list[dict[str, Any]]:
         SELECT rd.channel_name, count(*) AS n
         FROM routing_decisions rd
         LEFT JOIN deliveries d
-          ON d.item_id = rd.item_id AND d.channel_name = rd.channel_name
+          ON d.item_id = rd.item_id AND d.first_seen_utc = rd.first_seen_utc
+         AND d.channel_name = rd.channel_name
         WHERE rd.decision = 'routed' AND d.item_id IS NULL
         GROUP BY rd.channel_name
         ORDER BY rd.channel_name

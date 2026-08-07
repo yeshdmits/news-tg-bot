@@ -26,6 +26,18 @@ docker compose up -d db
 pytest
 ```
 
+`docker compose up -d db` is enough for tier 2. The `db` service is built, not
+pulled — the stock image has no `pg_cron` — so the first run compiles a small
+image layer. Add the `azurite` service when a change touches the object-storage
+archive; `make local-up` starts both and waits for them to be healthy.
+
+When a change touches storage sizing, retention or the archive, run it against a
+realistic corpus rather than an empty database:
+
+```bash
+make local-reset && make local-seed N=100000 && make test
+```
+
 Notes:
 
 - Any test that requests the `db` fixture is auto-marked `pg`

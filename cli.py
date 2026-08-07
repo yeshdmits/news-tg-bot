@@ -20,6 +20,8 @@ import sys
 import structlog
 from pydantic import BaseModel, ConfigDict
 
+from archive import retention
+
 log = structlog.get_logger(__name__)
 
 
@@ -55,6 +57,12 @@ class Settings(BaseModel):
     webhook_secret: str = ""  # X-Telegram-Bot-Api-Secret-Token; empty rejects all
     webhook_url: str = ""  # public endpoint passed to setWebhook
     port: int = 8000
+    # Retention windows. The error-table windows stay in the spec
+    # (errors.retention.*) because they are policy; these two are operational
+    # and belong with the deployment. See docs/data-model.md.
+    seen_updates_ttl_hours: int = retention.DEFAULT_SEEN_UPDATES_TTL_HOURS
+    fetches_ttl_days: int = retention.DEFAULT_FETCHES_TTL_DAYS
+    item_keys_ttl_days: int = retention.DEFAULT_ITEM_KEYS_TTL_DAYS
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -64,12 +72,34 @@ class Settings(BaseModel):
             return os.environ.get(name, default).strip().lower() in ("1", "true", "yes")
 
         problems: list[str] = []
+
+        def positive_int(name: str, default: int) -> int:
+            raw = os.environ.get(name, str(default))
+            try:
+                value = int(raw)
+            except ValueError:
+                problems.append(f"{name}: not an integer: {raw!r}")
+                return default
+            if value <= 0:
+                problems.append(f"{name}: must be positive, got {value}")
+                return default
+            return value
+
         port_raw = os.environ.get("PORT", "8000")
         try:
             port = int(port_raw)
         except ValueError:
             problems.append(f"PORT: not an integer: {port_raw!r}")
             port = 8000
+        seen_updates_ttl_hours = positive_int(
+            "SEEN_UPDATES_TTL_HOURS", retention.DEFAULT_SEEN_UPDATES_TTL_HOURS
+        )
+        fetches_ttl_days = positive_int(
+            "FETCHES_TTL_DAYS", retention.DEFAULT_FETCHES_TTL_DAYS
+        )
+        item_keys_ttl_days = positive_int(
+            "ITEM_KEYS_TTL_DAYS", retention.DEFAULT_ITEM_KEYS_TTL_DAYS
+        )
         if problems:
             raise SettingsError(problems)
 
@@ -88,6 +118,9 @@ class Settings(BaseModel):
             webhook_secret=os.environ.get("TELEGRAM_WEBHOOK_SECRET", ""),
             webhook_url=os.environ.get("WEBHOOK_URL", ""),
             port=port,
+            seen_updates_ttl_hours=seen_updates_ttl_hours,
+            fetches_ttl_days=fetches_ttl_days,
+            item_keys_ttl_days=item_keys_ttl_days,
         )
 
 
@@ -290,6 +323,11 @@ def cmd_run(settings: Settings, args: argparse.Namespace) -> int:
                 base_dir=spec_base_dir(settings, source),
                 alerts=engine,
                 healthcheck_url=settings.healthcheck_url,
+                retention_windows=retention.RetentionWindows(
+                    seen_updates_ttl_hours=settings.seen_updates_ttl_hours,
+                    fetches_ttl_days=settings.fetches_ttl_days,
+                    item_keys_ttl_days=settings.item_keys_ttl_days,
+                ),
             )
             if args.once:
                 # Exit non-zero only on failures that should stop the

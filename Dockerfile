@@ -19,7 +19,9 @@ COPY archive/ archive/
 COPY newsbot/ newsbot/
 COPY cli.py specsource.py ./
 
-RUN pip install --no-cache-dir .[translate]
+# [archive] carries pyarrow, so this also fixes `cli export --format parquet`,
+# which used to die in the shipped image for want of it.
+RUN pip install --no-cache-dir .[translate,archive]
 
 # No live configuration is baked into the image — it is publishable as-is.
 # Deployments inject the spec via SPEC_JSON (from a secret store), SPEC_URL,
