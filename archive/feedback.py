@@ -56,6 +56,59 @@ def enqueue(
     return row is not None
 
 
+def top_up(
+    conn: psycopg.Connection, chat_id: str, source_names: list[str], limit: int = 1
+) -> int:
+    """Queue already-archived items that have never been reviewed.
+
+    The ingest path only enqueues items at the moment they are first stored,
+    so an archive that predates the feature — or predates a source gaining a
+    feedback chat — would never be reviewed at all: the queue would sit empty
+    waiting for genuinely new articles. This is what makes the loop
+    self-feeding instead, so a chat that runs dry pulls from the corpus.
+
+    Newest first: an operator labelling a story is judging "would I publish
+    this", which ages badly. ``queued_utc`` is backdated to the item's own
+    ``first_seen_utc`` so the FIFO claim still walks the batch in publication
+    order. Returns how many rows were added."""
+    rows = conn.execute(
+        """
+        INSERT INTO feedback_reviews
+          (item_id, source_name, chat_id, queued_utc, spec_hash)
+        SELECT i.item_id, i.source_name, %(chat)s, i.first_seen_utc, i.spec_hash
+        FROM items i
+        LEFT JOIN feedback_reviews fr ON fr.item_id = i.item_id
+        WHERE i.source_name = ANY(%(sources)s)
+          AND i.duplicate_of IS NULL
+          AND fr.item_id IS NULL
+        ORDER BY i.first_seen_utc DESC
+        LIMIT %(limit)s
+        ON CONFLICT (item_id) DO NOTHING
+        RETURNING item_id
+        """,
+        {"chat": chat_id, "sources": list(source_names), "limit": limit},
+    ).fetchall()
+    return len(rows)
+
+
+def unreviewed_count(
+    conn: psycopg.Connection, chat_id: str, source_names: list[str]
+) -> int:
+    """Archived, non-duplicate items for a chat's sources with no review row —
+    the corpus ``top_up`` can still draw on."""
+    return conn.execute(
+        """
+        SELECT count(*) AS n
+        FROM items i
+        LEFT JOIN feedback_reviews fr ON fr.item_id = i.item_id
+        WHERE i.source_name = ANY(%(sources)s)
+          AND i.duplicate_of IS NULL
+          AND fr.item_id IS NULL
+        """,
+        {"sources": list(source_names)},
+    ).fetchone()["n"]
+
+
 def claim_next(
     conn: psycopg.Connection, chat_id: str, source_names: list[str]
 ) -> ReviewRecord | None:

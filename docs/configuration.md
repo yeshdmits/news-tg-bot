@@ -252,10 +252,12 @@ OK: 5 sources (1 archive-only), 2 channels, 5 bindings
 
 ### Feedback (`sources[].feedback`)
 
-An optional review chat. Every new non-duplicate item the source archives is
-queued for it; the chat shows **one card at a time** — title, lead, "Read
-more" link and two buttons — and the answer is stored as a boolean label on
-the item. Answering deletes the card and the next one appears.
+An optional review chat. Every non-duplicate item the source archives is
+queued for it — both as items arrive and, when the queue runs dry, from the
+back catalogue already in `items`. The chat shows **one unanswered card at a
+time** — title, lead, "Read more" link and two buttons — and the answer is
+stored as a boolean label on the item. Answering stamps the card with the
+verdict and posts the next one.
 
 | Field | Type | Default | Meaning |
 |---|---|---|---|
@@ -282,6 +284,15 @@ Things to know:
   every queued item eventually reaches a human. A source's first fetch queues
   up to `fetch_limit` items at once, so expect an initial batch to work
   through.
+- **The queue feeds itself from the archive.** Newly fetched items are queued
+  as they are stored, but that alone would stall on a feed that is already
+  fully archived — and would never show you the corpus collected *before* the
+  source gained a `feedback` chat. So when a chat runs dry it pulls the newest
+  not-yet-reviewed item for its sources out of `items`. Review is therefore
+  paced by how fast operators answer, not by how fast the world publishes, and
+  turning on `feedback` for an existing source starts labelling its back
+  catalogue immediately. Items already answered are never offered again, and
+  duplicates are never drawn.
 - **Anyone in the chat may press.** The chat itself is the authorization
   boundary — a press from any other chat is ignored without a reply. Keep the
   review chat private and its membership is the access list.
@@ -295,14 +306,27 @@ Things to know:
   fetch job seeds a chat that has none and repairs a send that failed. Cards
   therefore go out even under [`DRY_RUN`](#dry-run) — like alerting, review is
   operator surface, not publishing.
-- **The bot must be in the chat** and able to delete its own messages. Beyond
-  Telegram's 48-hour window that needs admin rights; without them the answered
-  card has its buttons stripped instead of being deleted. Either way the label
-  is already written.
+- **Nothing is deleted.** An answered card is edited in place — the headline
+  stays, the buttons go, and a `✅ approved by @who` / `❌ rejected by @who`
+  line is appended. The chat reads as a review log you can scroll back
+  through, the same own-and-edit model the alert engine uses for
+  `error_events`. Stripping the buttons is what stops a card being answered
+  twice. Editing is presentation only: the label is written before any
+  Telegram call, so a refused edit (a bot can only edit its own messages for
+  48 h) costs nothing but a stale-looking card.
+- **`/next` posts the next item** without waiting for the fetch job. Answering
+  a card already advances the queue, so this is the recovery lever for a chat
+  that has gone quiet — a send that failed, or a queue that was empty when the
+  last card was answered. It refuses while an unanswered card is still up, so
+  it can never break the one-card invariant. The command is registered scoped
+  to the review chats only.
+- **The bot must be in the chat** and able to read messages there. For `/next`
+  in a group that means either disabling privacy mode in BotFather or making
+  the bot an admin, otherwise Telegram never delivers the command.
 - **`register-webhook` must have run against this build.** Button presses
   arrive as `callback_query` updates, which Telegram only delivers if
-  `allowed_updates` asks for them. The migrate job re-runs it on every
-  deploy.
+  `allowed_updates` asks for them; the same run registers the `/next` menu.
+  The migrate job re-runs it on every deploy.
 - Removing a source from the spec leaves its queued items queued — they are
   skipped rather than dropped, so restoring the source resumes them, and
   meanwhile they cannot stall a chat other sources feed.

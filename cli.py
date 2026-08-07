@@ -367,7 +367,9 @@ def cmd_register_webhook(settings: Settings, args: argparse.Namespace) -> int:
     import asyncio
 
     from feedspec.loader import SpecError
+    from feedspec.resolve import resolve_source
     from fetcher.http import make_client
+    from newsbot.feedback import register_commands as register_review_commands
     from newsbot.ops import register_commands
     from newsbot.telegram import TelegramAPIError, TelegramClient, TelegramTransportError
     from specsource import SpecSourceError, load_spec_for
@@ -381,6 +383,14 @@ def cmd_register_webhook(settings: Settings, args: argparse.Namespace) -> int:
     if loaded.spec.errors is None:
         raise SystemExit("spec has no errors config — no ops chat to register commands for")
     ops_chat_id = str(loaded.spec.errors.ops_chat_id)
+    # /next is scoped to the review chats only; the ops chat keeps its own menu.
+    review_chat_ids = list(
+        dict.fromkeys(
+            chat_id
+            for source in loaded.spec.sources
+            if (chat_id := resolve_source(loaded.spec, source).feedback_chat_id)
+        )
+    )
     if settings.database_url:
         # The chat may have migrated to a supergroup since the spec was
         # written; bot_state holds the healed id (same rule as AlertEngine).
@@ -413,6 +423,7 @@ def cmd_register_webhook(settings: Settings, args: argparse.Namespace) -> int:
                     },
                 )
                 await register_commands(telegram, ops_chat_id)
+                await register_review_commands(telegram, review_chat_ids)
             except (TelegramAPIError, TelegramTransportError) as e:
                 # Non-zero so the CI migrate gate fails the deploy.
                 print(f"webhook registration failed: {e}", file=sys.stderr)
@@ -533,14 +544,24 @@ def cmd_stats(settings: Settings, args: argparse.Namespace) -> int:
         rows = feedbackdb.queue_stats(conn)
         if not rows:
             print("  (no source has a feedback chat)")
+        # Sources per chat come from the spec, which stats does not load; fall
+        # back to the chat's own rows so the unreviewed pool is still countable.
         for row in rows:
             labelled = row["approved"] + row["rejected"]
             rate = 100.0 * row["approved"] / labelled if labelled else 0.0
+            sources = [
+                r["source_name"]
+                for r in conn.execute(
+                    "SELECT DISTINCT source_name FROM feedback_reviews WHERE chat_id = %s",
+                    (row["chat_id"],),
+                )
+            ]
+            pool = feedbackdb.unreviewed_count(conn, row["chat_id"], sources)
             print(
                 f"  {row['chat_id']:<16} queued={row['queued']:<5} "
                 f"showing={row['pending']:<2} labelled={labelled:<6} "
                 f"({row['approved']} approved / {row['rejected']} rejected, "
-                f"{rate:.0f}% approval)"
+                f"{rate:.0f}% approval)  unreviewed archive={pool}"
             )
         return 0
     finally:

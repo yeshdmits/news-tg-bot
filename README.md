@@ -17,8 +17,9 @@ and stored, but never published.
 
 Reviewing is optional per source too, and independent of posting: give a
 source a [`feedback`](docs/configuration.md#feedback-sourcesfeedback) chat and
-every new item shows up there as a card with approve/reject buttons, one at a
-time. The answers are stored as boolean labels and come out of `cli export`
+its items show up there as cards with approve/reject buttons, one at a time —
+new arrivals first, then the back catalogue, so the chat never runs dry while
+anything is still unlabelled. The answers are stored as boolean labels and come out of `cli export`
 next to the item — which is how the archive becomes a training set rather
 than just a corpus. It works for archive-only sources exactly as it does for
 publishing ones.
