@@ -46,6 +46,23 @@ You should see the bot fetch the example sources and log decisions like:
 ... event=dry_run_post chat_id=-100999900003 title='Digital euro app to ...'
 ```
 
+### Verifying it holds up
+
+The same compose stack backs the tests and the storage work — Postgres carries
+`pg_cron`, and [Azurite](https://github.com/Azure/Azurite) stands in for Blob
+storage. A `Makefile` drives it:
+
+```bash
+make local-reset              # recreate the stack, run every migration
+make local-seed N=100000      # 100k synthetic items over 50 sources, backdated
+make test                     # full suite against it
+```
+
+`make help` lists every target. The synthetic corpus (`tools/seed.py`) carries
+the shapes that matter for sizing: 2–4 KB of RSS XML per item, wire-story
+syndication across sources, a long-tail source distribution, and backdating, so
+retention windows can be exercised without waiting for time to pass.
+
 Without Docker (Python 3.12+, no database needed for these):
 
 ```bash
