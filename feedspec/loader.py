@@ -13,6 +13,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from feedspec.model import Binding, ChannelDef, SourceDef, Spec
+from feedspec.resolve import resolve_source
 
 # Properties of the Telegram chat, not of the source→chat relationship.
 # They resolve only from the channel registry; a binding declaring one is a
@@ -90,6 +91,20 @@ def _cross_checks(spec: Spec) -> None:
                     f"source '{source.name}' binds channel '{binding.name}' twice"
                 )
             seen.add(binding.name)
+
+        # An archive-only source posts nothing, so a cold_start_policy that
+        # only controls posting is provably dead config — refuse it rather
+        # than let it read as if the first fetch would publish something.
+        # The *effective* policy is what matters: a spec-wide
+        # defaults.cold_start_policy reaches sources that never set the key.
+        if not source.channels:
+            policy = resolve_source(spec, source).cold_start_policy
+            if policy != "skip_all":
+                raise SpecError(
+                    f"source '{source.name}' has no channel bindings (archive-only) "
+                    f"but cold_start_policy is {policy!r}, which only affects "
+                    f"posting; set it to 'skip_all'"
+                )
 
     unknown_defaults = set(spec.defaults) - ALLOWED_DEFAULT_KEYS
     if unknown_defaults:

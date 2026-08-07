@@ -144,6 +144,26 @@ def test_validate_with_explicit_spec_needs_no_env(monkeypatch, capsys):
     assert main(["validate", "--spec", SPEC_FIXTURE]) == 0
     out = capsys.readouterr().out
     assert "OK:" in out
+    assert "archive-only" not in out  # every fixture source is bound
+
+
+def test_validate_names_archive_only_sources(monkeypatch, capsys, tmp_path):
+    """An unbound source would otherwise print a header and nothing else,
+    which reads as a rendering bug rather than a deliberate config."""
+    import json
+    from pathlib import Path
+
+    spec = json.loads(Path(SPEC_FIXTURE).read_text())
+    spec["sources"][0]["channels"] = []
+    spec["sources"][0]["cold_start_policy"] = "skip_all"
+    path = tmp_path / "spec.json"
+    path.write_text(json.dumps(spec))
+
+    clear_env(monkeypatch)
+    assert main(["validate", "--spec", str(path)]) == 0
+    out = capsys.readouterr().out
+    assert "(archive only — stored, never posted)" in out
+    assert "(1 archive-only)" in out
 
 
 def test_stats_does_not_require_spec(monkeypatch, capsys):

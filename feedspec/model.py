@@ -107,7 +107,10 @@ class ChannelDef(FrozenModel):
 
 class SourceDef(FrozenModel):
     """A feed source: where and how often to fetch, how to map items,
-    and the channel bindings that receive them."""
+    and the channel bindings that receive them. An empty channels list
+    makes the source archive-only: fetched, parsed, stored and deduped,
+    but never routed or posted. The key itself stays required, so a
+    dropped or misspelled one fails loudly instead of muting a source."""
 
     name: str
     type: Literal["xml"] = "xml"
@@ -133,13 +136,6 @@ class SourceDef(FrozenModel):
             raise ValueError(
                 f"unsupported cold_start_policy {v!r}; use skip_all or post_newest:N"
             )
-        return v
-
-    @field_validator("channels")
-    @classmethod
-    def _check_channels(cls, v: tuple[Binding, ...]) -> tuple[Binding, ...]:
-        if not v:
-            raise ValueError("source must bind to at least one channel")
         return v
 
 

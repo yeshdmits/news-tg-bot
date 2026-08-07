@@ -193,6 +193,7 @@ def cmd_validate(settings: Settings, args: argparse.Namespace) -> int:
         print(f"  WARNING: {warning}")
 
     pairs = resolve_all(spec)
+    archive_only = 0
     for source in spec.sources:
         eff_src = resolve_source(spec, source)
         state = "" if eff_src.enabled else "  [DISABLED]"
@@ -201,6 +202,11 @@ def cmd_validate(settings: Settings, args: argparse.Namespace) -> int:
             f"every {eff_src.fetch_interval_min} min, limit {eff_src.fetch_limit}, "
             f"cold_start={eff_src.cold_start_policy}){state}"
         )
+        if not source.channels:
+            # Say it out loud: a source with no bindings would otherwise
+            # print a header and nothing else, which reads as a bug.
+            archive_only += 1
+            print("    -> (archive only — stored, never posted)")
         for cfg in (p for p in pairs if p.source_name == source.name):
             flags = []
             if cfg.include_categories:
@@ -220,7 +226,11 @@ def cmd_validate(settings: Settings, args: argparse.Namespace) -> int:
                 f"{cfg.queue_policy}"
                 + (", " + ", ".join(flags) if flags else "")
             )
-    print(f"\nOK: {len(spec.sources)} sources, {len(spec.channels)} channels, {len(pairs)} bindings")
+    archive_note = f" ({archive_only} archive-only)" if archive_only else ""
+    print(
+        f"\nOK: {len(spec.sources)} sources{archive_note}, "
+        f"{len(spec.channels)} channels, {len(pairs)} bindings"
+    )
     return 0
 
 
@@ -436,7 +446,10 @@ def cmd_fetch(settings: Settings, args: argparse.Namespace) -> int:
         items = parse_feed(result.body, effective, base_dir=base_dir)
         now = datetime.now(timezone.utc)
         pairs = [p for p in resolve_all(spec) if p.source_name == source.name]
-        print(f"{source.name}: {len(items)} items (fetch_limit {effective.fetch_limit})\n")
+        print(f"{source.name}: {len(items)} items (fetch_limit {effective.fetch_limit})")
+        if not pairs:
+            print("archive only — no channel bindings; items would be stored, not posted")
+        print()
         for item in items:
             print(f"[{item.published_utc:%Y-%m-%d %H:%M}] {item.title}")
             print(f"    id={item.source_item_id} categories={list(item.categories)}")

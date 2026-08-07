@@ -132,11 +132,41 @@ def test_cold_start_policy_validation(tmp_path):
         load_spec(write_spec(tmp_path, spec))
 
 
-def test_source_without_bindings_rejected(tmp_path):
+def test_source_without_bindings_is_archive_only(tmp_path):
     spec = minimal_spec()
     spec["sources"][0]["channels"] = []
-    with pytest.raises(SpecError, match="at least one channel"):
+    loaded = load_spec(write_spec(tmp_path, spec))
+    assert loaded.spec.sources[0].channels == ()
+
+
+def test_source_missing_channels_key_still_rejected(tmp_path):
+    """Archive-only must be declared with an explicit []: a dropped or
+    misspelled key must never silently stop a source from posting."""
+    spec = minimal_spec()
+    del spec["sources"][0]["channels"]
+    with pytest.raises(SpecError, match="channels"):
         load_spec(write_spec(tmp_path, spec))
+
+
+def test_archive_only_source_rejects_posting_cold_start(tmp_path):
+    spec = minimal_spec()
+    spec["sources"][0]["channels"] = []
+    spec["sources"][0]["cold_start_policy"] = "post_newest:2"
+    with pytest.raises(SpecError, match="archive-only.*cold_start_policy"):
+        load_spec(write_spec(tmp_path, spec))
+
+
+def test_archive_only_cold_start_check_uses_effective_policy(tmp_path):
+    """The contradiction is just as real when the policy is inherited from
+    spec defaults rather than set on the source."""
+    spec = minimal_spec()
+    spec["sources"][0]["channels"] = []
+    spec["defaults"] = {"cold_start_policy": "post_newest:2"}
+    with pytest.raises(SpecError, match="archive-only.*cold_start_policy"):
+        load_spec(write_spec(tmp_path, spec))
+
+    spec["sources"][0]["cold_start_policy"] = "skip_all"
+    assert load_spec(write_spec(tmp_path, spec)).spec.sources[0].channels == ()
 
 
 def test_target_spec_in_repo_is_valid():

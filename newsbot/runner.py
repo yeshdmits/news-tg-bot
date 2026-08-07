@@ -316,6 +316,8 @@ def _store_and_decide(
     if not is_new:
         return 0
 
+    # No bindings is a supported shape: an archive-only source stores its
+    # items and deliberately produces zero routing_decisions rows.
     for binding in source.channels:
         cfg = deps.pairs[(source.name, binding.name)]
         channel = resolve_channel(spec, binding.name)
@@ -400,7 +402,18 @@ async def post_phase(deps: Deps, stats: RunStats) -> None:
         records = {r.item_id: r for r in fresh}
         for candidate in selection.to_post:
             record = records[candidate.item_id]
-            cfg = deps.pairs[(record.source_name, channel.name)]
+            cfg = deps.pairs.get((record.source_name, channel.name))
+            if cfg is None:
+                # The backlog is keyed by channel alone, so decisions outlive
+                # the spec that made them: a source turned archive-only, or
+                # removed, leaves routed rows with no binding left to post
+                # them under. Retire them terminally (no gated: prefix) so
+                # they leave the backlog instead of being rescanned forever.
+                writer.update_routing_decision(
+                    conn, record.item_id, channel.name, Decision.CHANNEL_DISABLED,
+                    reason="binding removed from spec",
+                )
+                continue
             effective_source = resolve_source(
                 spec, next(s for s in spec.sources if s.name == record.source_name)
             )

@@ -25,6 +25,12 @@ Each Telegram post contains: the item **title**, a **lead** truncated to
 (`photo_full`) or Telegram's link preview. The full article body is never
 fetched or republished; only what the publisher put in their feed.
 
+A source configured with an empty `channels` list is
+[archive-only](configuration.md#archive-only-sources): it is stored under
+everything in "What it stores" above but republished nowhere. That narrows
+the exposure to storage — it does not remove it, since storing a
+publisher's content is itself subject to their terms.
+
 ## Whose terms apply
 
 - **Feed publishers.** Offering an RSS/Atom feed does not imply permission

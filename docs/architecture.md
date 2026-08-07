@@ -54,7 +54,7 @@ sequenceDiagram
     loop each due source
         J->>F: conditional GET (ETag/Last-Modified)
         F-->>J: 200 + XML (or 304 / error)
-        J->>PG: record fetch, store items,<br/>dedupe, one routing decision<br/>per (item, bound channel)
+        J->>PG: record fetch, store items,<br/>dedupe, one routing decision<br/>per (item, bound channel)<br/>(archive-only source: none)
     end
     loop each enabled channel
         J->>PG: claim post slot (atomic UPSERT)
@@ -78,6 +78,9 @@ Key properties:
 - **Backlog, not loss**: an item routed while the channel's posting window is
   closed is recorded `rate_limited` with a `gated:` reason and reconsidered
   next window (`drain_all`) or dropped by policy (`drop_oldest`).
+- **Storing and posting are separable**: a source with an empty `channels` list
+  is [archive-only](configuration.md#archive-only-sources) — it runs the whole
+  fetch/parse/dedupe/store path and stops before routing.
 - Failures are classified into error events and alerted per the spec's
   `errors` config; a failing source backs off exponentially (cap 60 min)
   without affecting other sources.
