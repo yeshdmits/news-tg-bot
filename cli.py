@@ -62,6 +62,7 @@ class Settings(BaseModel):
     # and belong with the deployment. See docs/data-model.md.
     seen_updates_ttl_hours: int = retention.DEFAULT_SEEN_UPDATES_TTL_HOURS
     fetches_ttl_days: int = retention.DEFAULT_FETCHES_TTL_DAYS
+    item_keys_ttl_days: int = retention.DEFAULT_ITEM_KEYS_TTL_DAYS
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -96,6 +97,9 @@ class Settings(BaseModel):
         fetches_ttl_days = positive_int(
             "FETCHES_TTL_DAYS", retention.DEFAULT_FETCHES_TTL_DAYS
         )
+        item_keys_ttl_days = positive_int(
+            "ITEM_KEYS_TTL_DAYS", retention.DEFAULT_ITEM_KEYS_TTL_DAYS
+        )
         if problems:
             raise SettingsError(problems)
 
@@ -116,6 +120,7 @@ class Settings(BaseModel):
             port=port,
             seen_updates_ttl_hours=seen_updates_ttl_hours,
             fetches_ttl_days=fetches_ttl_days,
+            item_keys_ttl_days=item_keys_ttl_days,
         )
 
 
@@ -321,6 +326,7 @@ def cmd_run(settings: Settings, args: argparse.Namespace) -> int:
                 retention_windows=retention.RetentionWindows(
                     seen_updates_ttl_hours=settings.seen_updates_ttl_hours,
                     fetches_ttl_days=settings.fetches_ttl_days,
+                    item_keys_ttl_days=settings.item_keys_ttl_days,
                 ),
             )
             if args.once:

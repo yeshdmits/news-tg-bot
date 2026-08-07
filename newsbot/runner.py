@@ -301,8 +301,11 @@ def _store_and_decide(
     conn = deps.conn
     spec = deps.loaded.spec
     canon = dedupe.canonical_url(item.url)
+    # item_keys, not items: it carries the uniqueness guarantee once items is
+    # partitioned, and outlives the item itself, so a feed republishing an
+    # article whose row has already been archived is still recognised.
     already = conn.execute(
-        "SELECT item_id FROM items WHERE source_name = %s AND source_item_id = %s",
+        "SELECT item_id FROM item_keys WHERE source_name = %s AND source_item_id = %s",
         (item.source_name, item.source_item_id),
     ).fetchone()
     if already:

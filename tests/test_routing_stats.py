@@ -174,3 +174,19 @@ def test_reconciliation_holds_for_every_decision_value(db, decision):
     item_id = _item(db, spec_hash)
     writer.record_routing_decision(db, item_id, "chan", decision)
     assert _persisted_total(db) == 1
+
+
+def test_channel_stats_unions_rows_and_counters(db):
+    """cli stats must not under-report the outcomes that became counters —
+    which is most of them."""
+    from archive.stats import channel_stats
+
+    spec_hash = _spec_version(db)
+    for i, decision in enumerate([Decision.ROUTED, Decision.FILTERED_CATEGORY,
+                                  Decision.FILTERED_CATEGORY, Decision.TOO_OLD]):
+        item_id = _item(db, spec_hash, suffix=str(i))
+        writer.record_routing_decision(db, item_id, "chan", decision)
+
+    counts = {r["decision"]: r["n"] for r in channel_stats(db)}
+
+    assert counts == {"routed": 1, "filtered_category": 2, "too_old": 1}

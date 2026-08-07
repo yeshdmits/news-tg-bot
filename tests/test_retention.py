@@ -63,7 +63,7 @@ def test_run_reports_what_each_table_lost(db):
 
     removed = retention.run(db, RetentionWindows(seen_updates_ttl_hours=24))
 
-    assert removed == {"seen_updates": 1, "fetches": 0}
+    assert removed == {"seen_updates": 1, "fetches": 0, "item_keys": 0}
 
 
 def test_defaults_match_the_documented_windows():

@@ -43,7 +43,7 @@ from multiprocessing import Pool
 import psycopg
 from psycopg.types.json import Jsonb
 
-from archive.dedupe import canonical_url, content_hash, simhash64
+from archive.dedupe import canonical_url, content_hash, simhash64, simhash_bands
 from archive.ids import timestamp_of, uuid7_at
 from archive.writer import RETAINED_DECISIONS
 
@@ -127,6 +127,20 @@ ITEM_TYPES = (
     "text", "text", "text", "text", "text",
     "text", "timestamptz", "timestamptz", "bytea",
     "int8", "uuid", "text", "text",
+)
+
+# The dedupe key written alongside every item. Seeding items without keys
+# would produce a corpus in exactly the state migration 0005 refuses to leave
+# behind: articles that re-ingest as new when their source republishes them.
+KEY_COLUMNS = (
+    "source_name", "source_item_id", "item_id", "content_hash", "title_simhash",
+    "band0", "band1", "band2", "band3", "canonical_url", "duplicate_of",
+    "published_utc", "first_seen_utc",
+)
+KEY_TYPES = (
+    "text", "text", "uuid", "bytea", "int8",
+    "int2", "int2", "int2", "int2", "text", "uuid",
+    "timestamptz", "timestamptz",
 )
 
 
@@ -352,13 +366,19 @@ class Corpus:
         else:
             simhashes = [simhash64(t) for t in titles]
 
-        item_rows, category_rows, decision_rows = [], [], []
+        item_rows, key_rows, category_rows, decision_rows = [], [], [], []
         for it, canon, sim in zip(raw_items, canons, simhashes, strict=True):
+            chash = content_hash(canon, it["title"])
+            key_rows.append((
+                it["source_name"], it["source_item_id"], it["item_id"], chash, sim,
+                *simhash_bands(sim), canon, it["duplicate_of"],
+                it["published_utc"], it["first_seen_utc"],
+            ))
             item_rows.append((
                 it["item_id"], it["source_name"], it["fetch_id"], it["source_item_id"],
                 it["raw_xml"], it["title"], it["lead"], it["language"], it["url"],
                 canon, it["image_url"], it["published_raw"], it["published_utc"],
-                it["first_seen_utc"], content_hash(canon, it["title"]), sim,
+                it["first_seen_utc"], chash, sim,
                 it["duplicate_of"], it["copyright_holder"], self.spec_hash,
             ))
             for ordinal, category in enumerate(it["categories"]):
@@ -379,7 +399,7 @@ class Corpus:
                     key = (it["first_seen_utc"].date(), channel, decision)
                     self.stat_counts[key] = self.stat_counts.get(key, 0) + 1
 
-        return fetch_rows, item_rows, category_rows, decision_rows
+        return fetch_rows, item_rows, key_rows, category_rows, decision_rows
 
 
 # --- writing ---------------------------------------------------------------
@@ -405,7 +425,8 @@ def _write_prerequisites(conn: psycopg.Connection, corpus: Corpus) -> None:
         )
 
 
-def _flush(conn: psycopg.Connection, fetch_rows, item_rows, category_rows, decision_rows) -> None:
+def _flush(conn: psycopg.Connection, fetch_rows, item_rows, key_rows,
+           category_rows, decision_rows) -> None:
     with conn.cursor() as cur:
         with cur.copy(
             "COPY fetches (fetch_id, source_name, started_utc, spec_hash) "
@@ -420,6 +441,13 @@ def _flush(conn: psycopg.Connection, fetch_rows, item_rows, category_rows, decis
         ) as cp:
             cp.set_types(ITEM_TYPES)
             for row in item_rows:
+                cp.write_row(row)
+
+        with cur.copy(
+            f"COPY item_keys ({', '.join(KEY_COLUMNS)}) FROM STDIN (FORMAT BINARY)"
+        ) as cp:
+            cp.set_types(KEY_TYPES)
+            for row in key_rows:
                 cp.write_row(row)
 
         with cur.copy(
@@ -494,9 +522,9 @@ def main(argv: list[str] | None = None) -> int:
         conn.execute("SET statement_timeout = 0")
         conn.execute("SET idle_in_transaction_session_timeout = 0")
         _write_prerequisites(conn, corpus)
-        for fetch_rows, item_rows, category_rows, decision_rows in corpus.chunks():
+        for fetch_rows, item_rows, key_rows, category_rows, decision_rows in corpus.chunks():
             with conn.transaction():
-                _flush(conn, fetch_rows, item_rows, category_rows, decision_rows)
+                _flush(conn, fetch_rows, item_rows, key_rows, category_rows, decision_rows)
             written += len(item_rows)
             elapsed = (datetime.now(UTC) - started).total_seconds()
             print(

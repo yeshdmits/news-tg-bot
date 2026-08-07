@@ -121,7 +121,7 @@ def test_corpus_is_deterministic_for_a_given_rng_seed(seed):
             end=datetime(2026, 8, 7, tzinfo=UTC),
         )
         corpus = Corpus(args)
-        _, item_rows, _, _ = next(corpus.chunks())
+        _, item_rows, _, _, _ = next(corpus.chunks())
         return item_rows
 
     # Ids are drawn from the seeded RNG too (see _uuid4), so the whole corpus

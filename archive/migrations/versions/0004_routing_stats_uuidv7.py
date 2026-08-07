@@ -19,9 +19,10 @@ Create Date: 2026-08-07
 """
 
 import logging
-import time
 
 from alembic import op
+
+from archive.migration_support import CATCH_UP_MARGIN, lift_timeouts, take_fetch_lock
 
 revision = "0004"
 down_revision = "0003"
@@ -29,58 +30,6 @@ branch_labels = None
 depends_on = None
 
 log = logging.getLogger("alembic.runtime.migration")
-
-# The fetch job's advisory lock (newsbot/runner.py FETCH_LOCK_NAME). Held
-# across the backfill so rows written mid-migration cannot be missed.
-FETCH_LOCK_NAME = "newsbot:fetch"
-LOCK_ATTEMPTS = 60
-LOCK_WAIT_SECONDS = 2
-
-# Clocks differ: first_seen_utc is now minted client-side from the UUIDv7
-# timestamp while the snapshot boundary comes from the database. The catch-up
-# pass is idempotent, so err wide — over-scanning costs a little I/O,
-# under-scanning costs correctness.
-CATCH_UP_MARGIN = "5 minutes"
-
-
-def lift_timeouts() -> None:
-    """Migration 0003 set statement_timeout = '30s' on the role, and every
-    backfill here exceeds it at production size. SET LOCAL reverts at commit,
-    so the bound stays intact for normal operation."""
-    op.execute("SET LOCAL statement_timeout = 0")
-    op.execute("SET LOCAL idle_in_transaction_session_timeout = 0")
-
-
-def take_fetch_lock(attempts: int = LOCK_ATTEMPTS, wait: float = LOCK_WAIT_SECONDS) -> None:
-    """Pause ingest for the duration of the backfill.
-
-    pg_try_advisory_xact_lock, not pg_try_advisory_lock: the session-scoped
-    form does not release at commit, so a migration that raised — or a runner
-    holding its connection open — would leave ingest dead with no sign of why.
-    The xact form releases on commit *and* rollback, and still conflicts with
-    the fetch job's session-scoped lock because both share one lock space.
-
-    Acquisition is itself a statement, so call this after lift_timeouts().
-    """
-    bind = op.get_bind()
-    for attempt in range(1, attempts + 1):
-        locked = bind.exec_driver_sql(
-            "SELECT pg_try_advisory_xact_lock(hashtext(%(name)s))",
-            {"name": FETCH_LOCK_NAME},
-        ).scalar()
-        if locked:
-            if attempt > 1:
-                log.info("acquired %s after %.0fs", FETCH_LOCK_NAME, (attempt - 1) * wait)
-            return
-        time.sleep(wait)
-
-    # Never proceed without it. A "best effort, continue anyway" fallback would
-    # reintroduce exactly the lost-write bug the lock exists to prevent; a
-    # failed deploy is visible and retryable, a silent hole is neither.
-    raise RuntimeError(
-        f"could not acquire {FETCH_LOCK_NAME} within {attempts * wait:.0f}s — a fetch "
-        "run is still holding it. The schema is untouched; retry once it finishes."
-    )
 
 
 SCHEMA_SQL = """

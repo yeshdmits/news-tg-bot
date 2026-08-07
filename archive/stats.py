@@ -6,8 +6,9 @@ Lives in archive because it is pure SQL over archive tables; cli.py renders.
 from __future__ import annotations
 
 import csv
+from collections.abc import Iterator
 from datetime import datetime
-from typing import Any, Iterator, TextIO
+from typing import Any, TextIO
 
 import psycopg
 
@@ -127,11 +128,24 @@ def source_stats(conn: psycopg.Connection) -> list[dict[str, Any]]:
 
 
 def channel_stats(conn: psycopg.Connection) -> list[dict[str, Any]]:
-    """Routing decision counts per (channel, decision)."""
+    """Routing decision counts per (channel, decision).
+
+    Unions both halves of the split introduced in migration 0004: the retained
+    outcomes still have a row each, the rest are per-day counters. Reading only
+    `routing_decisions` here would under-report every negative outcome — which
+    is most of them — and make `cli stats` quietly wrong.
+    """
     return conn.execute(
         """
-        SELECT channel_name, decision::text AS decision, count(*) AS n
-        FROM routing_decisions
+        SELECT channel_name, decision, sum(n) AS n FROM (
+          SELECT channel_name, decision::text AS decision, count(*) AS n
+          FROM routing_decisions
+          GROUP BY channel_name, decision
+          UNION ALL
+          SELECT channel_name, decision::text AS decision, sum(n) AS n
+          FROM routing_stats
+          GROUP BY channel_name, decision
+        ) combined
         GROUP BY channel_name, decision
         ORDER BY channel_name, decision
         """

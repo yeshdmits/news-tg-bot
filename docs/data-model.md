@@ -1,7 +1,7 @@
 # Data model
 
 One PostgreSQL database, schema owned by alembic
-(`archive/migrations/versions/`, three migrations, plain SQL). The `archive`
+(`archive/migrations/versions/`, plain SQL). The `archive`
 package is the **only** code that writes to it.
 
 ## Design stance: keep everything, in two tiers
@@ -42,10 +42,10 @@ Only operational error data is deleted outright (see
 |---|---|---|
 | `spec_versions` | distinct spec.json content | `spec_hash` (sha256) + the full spec as jsonb. Every fetch, item and error event references the exact spec version that produced it, so the archive stays interpretable after config changes. |
 | `fetches` | HTTP fetch of a source | Status, ETag/Last-Modified, item counts, `possible_gap` (feed moved faster than the fetch cadence), error text for failed fetches. |
-| `items` | item first seen | `raw_xml` (bytea, NOT NULL), extracted fields, `canonical_url` (tracking params stripped), `content_hash`, `title_simhash`, `duplicate_of` self-reference, `copyright_holder`. `UNIQUE (source_name, source_item_id)` is the idempotency anchor: re-fetching the same feed inserts nothing new. Since 0004, `item_id` is a **UUIDv7** minted by the application and `first_seen_utc` is read out of that id — see [Item identity](#item-identity). |
+| `items` | item first seen | `raw_xml` (bytea, NOT NULL), extracted fields, `canonical_url` (tracking params stripped), `content_hash`, `title_simhash`, `duplicate_of` self-reference, `copyright_holder`. Since 0005 the idempotency anchor is `item_keys`, not this table's own `UNIQUE (source_name, source_item_id)` — see [Dedupe](#dedupe-0005). Since 0004, `item_id` is a **UUIDv7** minted by the application and `first_seen_utc` is read out of that id — see [Item identity](#item-identity). |
 | `item_categories` | (item, ordinal) | Categories in feed order. |
 | `translations` | (content_hash, field, target_language) | Content-keyed translation cache — re-runs and duplicates never re-bill the provider. |
-| `routing_decisions` | (item, channel) | Exactly one decision per item per bound channel: `routed`, `filtered_category`, `predicate_failed`, `too_old`, `duplicate`, `channel_disabled`, `cold_start_skip`, or `rate_limited` (with a `reason`; `gated:` reasons are re-evaluated next window, others are terminal). An [archive-only](configuration.md#archive-only-sources) source has no bound channels and so produces **no** rows here — its items are stored with no decision trail at all. `channel_disabled` doubles as the retirement state for a decision whose binding has since disappeared from the spec, carrying the reason `binding removed from spec`. |
+| `routing_decisions` | (item, channel), for retained outcomes only | One decision per item per bound channel, but since 0004 only `routed`, `rate_limited` and `duplicate` keep a row — see [What `routing_decisions` no longer holds](#what-routing_decisions-no-longer-holds). The full outcome set is: `routed`, `filtered_category`, `predicate_failed`, `too_old`, `duplicate`, `channel_disabled`, `cold_start_skip`, or `rate_limited` (with a `reason`; `gated:` reasons are re-evaluated next window, others are terminal). An [archive-only](configuration.md#archive-only-sources) source has no bound channels and so produces **no** rows here — its items are stored with no decision trail at all. `channel_disabled` doubles as the retirement state for a decision whose binding has since disappeared from the spec, carrying the reason `binding removed from spec`. |
 | `deliveries` | (item, channel) | `sent` / `failed` / `skipped` with attempt count, Telegram message id, error. Dry-run posts are recorded as `skipped` with error `dry_run`. |
 
 ### Operational state (0001)
@@ -76,6 +76,48 @@ Migration 0003 also sets role-level `statement_timeout = '30s'` and
 must not strand a lock or an idle transaction. Migrations run as that role, so
 every one that backfills lifts both with `SET LOCAL` for the duration; see
 [Writing a migration that backfills](#writing-a-migration-that-backfills).
+
+### Dedupe (0005)
+
+| Table | Purpose |
+|---|---|
+| `item_keys` | One row per `(source_name, source_item_id)` ever seen. **The idempotency anchor**, taken over from `items`. Never partitioned; purged only by its own TTL. Carries `content_hash`, `title_simhash` plus its four LSH bands, `canonical_url`, `duplicate_of`, and `archive_dt` (NULL until the item's day is archived). |
+
+`items`' `UNIQUE (source_name, source_item_id)` cannot survive partitioning: a
+partitioned table's unique constraints must contain the partition key, and
+`UNIQUE (source_name, source_item_id, first_seen_utc)` compiles, migrates
+cleanly, and **silently permits the same article in a later partition**. Old
+days are also dropped outright, so `ON CONFLICT` against `items` stops firing
+for anything already archived. `item_keys` is where the guarantee lives now,
+and `writer.store_item` claims the key *before* inserting the item.
+
+**The tradeoff, stated plainly:** past `ITEM_KEYS_TTL_DAYS` a key is deleted
+and the article is forgotten. A source republishing it after that window
+ingests it as new. That is the price of an index that cannot grow forever — at
+500k items/day the table is ~15 M rows at 30 days. The window is deliberately
+longer than `ARCHIVE_RETENTION_DAYS` so dedupe survives the purge of the item
+itself.
+
+#### Near-duplicate detection
+
+`title_simhash` is split into four disjoint 16-bit bands, each indexed. Two
+hashes within Hamming distance *d* differ in at most *d* bits, so if
+*d* < 4 at least one band contains none of the differing bits and matches
+exactly — probing for an exact match on any band returns every true
+near-duplicate. Recall is 100%, not approximate.
+
+**That guarantee holds only while `NEAR_DUP_BANDS > NEAR_DUP_MAX_HAMMING`.**
+Raising the threshold to 5 against 4 bands degrades recall silently: duplicates
+simply start flowing, with no error anywhere. `archive/dedupe.py` asserts the
+relationship at import rather than trusting a comment.
+
+Measured on 100k seeded items (27k originals in a 72 h window): candidate set
+per band probe **p50 3, p95 14, p99 27, max 104** — tens, not thousands, so the
+four band indexes are probed with `BitmapOr` and no `UNION ALL` rewrite is
+warranted. The probe replaced a linear scan that shipped every in-window
+original to the client: **30 ms → 1.15 ms p50**, and the new cost does not grow
+with the window, where the old one extrapolated to ~1.5 s per ingested item at
+a production-sized 72 h window.
 
 ### Volume and identity (0004)
 
@@ -152,7 +194,7 @@ Deletion lives in `archive/retention.py` (operational windows) and
 | `item_categories` | with the item's partition | 7 days | as above |
 | `routing_decisions` | with the item's partition | 7 days | as above |
 | `deliveries` | with the item's partition | 7 days | as above |
-| `item_keys` | own TTL, deliberately longer than the item window | 30 days | `ITEM_KEYS_TTL_DAYS` |
+| `item_keys` | own TTL, deliberately longer than the item window; chunked | 30 days | `ITEM_KEYS_TTL_DAYS` |
 | `fetches` | older than the window | 90 days | `FETCHES_TTL_DAYS` |
 | `seen_updates` | older than the window, every execution | 24 h | `SEEN_UPDATES_TTL_HOURS` |
 | `error_occurrences` | older than the window | 30 days | `errors.retention.occurrences_days` |

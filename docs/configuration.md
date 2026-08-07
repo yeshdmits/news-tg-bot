@@ -90,6 +90,7 @@ single message before exiting with status 2.
 | `WEBHOOK_URL` | str | *(empty)* | `register-webhook` | Public HTTPS endpoint passed to Telegram's `setWebhook`. |
 | `PORT` | int | `8000` | — | `cli serve` listen port. A non-numeric value is reported as `CONFIG: PORT: not an integer` at startup. |
 | `SEEN_UPDATES_TTL_HOURS` | int | `24` | — | Webhook idempotency window. Purged every execution. Must be positive — a zero or negative value would delete the whole table on the next pass and is rejected at startup. |
+| `ITEM_KEYS_TTL_DAYS` | int | `30` | — | Dedupe-key retention. Deliberately longer than `ARCHIVE_RETENTION_DAYS` so dedupe survives the purge of the item itself; past this window a republished article is re-ingested as new. Must be positive. |
 | `FETCHES_TTL_DAYS` | int | `90` | — | Fetch audit-row retention. **Inert until migration 0006**: `items.fetch_id` references `fetches` until then, so the purge would fail on rows still referenced; it returns 0 rather than raising. Must be positive. |
 
 The error-table windows (`error_occurrences`, `alert_outbox`, `error_events`)

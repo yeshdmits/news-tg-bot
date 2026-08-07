@@ -15,7 +15,7 @@ from uuid import UUID
 import psycopg
 from psycopg.types.json import Jsonb
 
-from archive.dedupe import canonical_url, content_hash, simhash64
+from archive.dedupe import canonical_url, content_hash, simhash64, simhash_bands
 from archive.ids import timestamp_of, uuid7
 from archive.models import ChannelState, Decision, DeliveryStatus, ItemRecord, SourceState
 from fetcher.parse import RawItem
@@ -151,6 +151,58 @@ def record_fetch(
     return row["fetch_id"]
 
 
+def _record_key(
+    conn: psycopg.Connection,
+    *,
+    item: RawItem,
+    item_id: UUID,
+    canon: str,
+    chash: bytes,
+    simhash: int,
+    duplicate_of: UUID | None,
+    first_seen_utc: datetime,
+) -> UUID | None:
+    """Claim (source_name, source_item_id) for this item.
+
+    Returns the id already holding the claim, or None if this call won it.
+
+    **This is the idempotency anchor**, not the insert into `items`. `items`
+    loses its `UNIQUE (source_name, source_item_id)` when it is partitioned —
+    the constraint would have to contain the partition key, and a
+    `UNIQUE (source_name, source_item_id, first_seen_utc)` compiles, migrates
+    cleanly and silently permits the same article in a later partition. Worse,
+    old days are dropped outright, so `ON CONFLICT` against `items` stops
+    firing for anything already archived and the article re-ingests as new.
+
+    The conditional insert is also the atomic claim: two concurrent fetches of
+    the same feed cannot both win it.
+    """
+    bands = simhash_bands(simhash)
+    won = conn.execute(
+        """
+        INSERT INTO item_keys
+          (source_name, source_item_id, item_id, content_hash, title_simhash,
+           band0, band1, band2, band3, canonical_url, duplicate_of,
+           published_utc, first_seen_utc)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (source_name, source_item_id) DO NOTHING
+        RETURNING item_id
+        """,
+        (
+            item.source_name, item.source_item_id, item_id, chash, simhash,
+            *bands, canon, duplicate_of, item.published_utc, first_seen_utc,
+        ),
+    ).fetchone()
+    if won is not None:
+        return None
+
+    existing = conn.execute(
+        "SELECT item_id FROM item_keys WHERE source_name = %s AND source_item_id = %s",
+        (item.source_name, item.source_item_id),
+    ).fetchone()
+    return existing["item_id"]
+
+
 def store_item(
     conn: psycopg.Connection,
     fetch_id: UUID,
@@ -163,6 +215,12 @@ def store_item(
     Returns (item_id, is_new). Categories are written only for new rows.
     """
     canon = canonical_url(item.url)
+    # Computed once and reused for both tables. These used to be recomputed
+    # inside this function after the caller had already computed them for
+    # find_duplicate — simhash64 costs ~700 us, so that was ~700 us wasted per
+    # ingested item, roughly half the whole per-item CPU budget.
+    chash = content_hash(canon, item.title)
+    simhash = simhash64(item.title)
     # The id is minted here rather than by a server default, and first_seen_utc
     # is read back out of it. Deriving rather than calling now() means the
     # archive date embedded in the id and the column the partition is keyed on
@@ -173,7 +231,19 @@ def store_item(
     # previous day.
     item_id = uuid7()
     first_seen_utc = timestamp_of(item_id)
-    row = conn.execute(
+
+    # Claim the key *first*. It is the idempotency anchor, and it answers
+    # correctly even when the previous item's row has already been archived and
+    # dropped — which the insert below cannot, because there is then nothing
+    # left in `items` for ON CONFLICT to conflict with.
+    claimed_by = _record_key(
+        conn, item=item, item_id=item_id, canon=canon, chash=chash, simhash=simhash,
+        duplicate_of=duplicate_of, first_seen_utc=first_seen_utc,
+    )
+    if claimed_by is not None:
+        return claimed_by, False
+
+    conn.execute(
         """
         INSERT INTO items
           (item_id, source_name, fetch_id, source_item_id, raw_xml, title,
@@ -182,24 +252,14 @@ def store_item(
            title_simhash, duplicate_of, copyright_holder, spec_hash)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (source_name, source_item_id) DO NOTHING
-        RETURNING item_id
         """,
         (
             item_id, item.source_name, fetch_id, item.source_item_id, item.raw_xml,
             item.title, item.lead, item.language, item.url, canon,
             item.image_url, item.published_raw, item.published_utc, first_seen_utc,
-            content_hash(canon, item.title), simhash64(item.title),
-            duplicate_of, item.copyright_holder, spec_hash,
+            chash, simhash, duplicate_of, item.copyright_holder, spec_hash,
         ),
-    ).fetchone()
-    if row is None:
-        existing = conn.execute(
-            "SELECT item_id FROM items WHERE source_name = %s AND source_item_id = %s",
-            (item.source_name, item.source_item_id),
-        ).fetchone()
-        return existing["item_id"], False
-
-    item_id = row["item_id"]
+    )
     for ordinal, category in enumerate(item.categories):
         conn.execute(
             "INSERT INTO item_categories (item_id, ordinal, category) VALUES (%s, %s, %s)",
