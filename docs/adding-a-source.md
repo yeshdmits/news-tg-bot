@@ -144,12 +144,18 @@ that your `when` filter passes/blocks the items you expect.
 
 ## 4. Ship it
 
-In the cloud the spec is a Key Vault secret injected as `SPEC_JSON`
-(`docs/deployment/terraform.md`): update `spec.local.json` and either
-`az keyvault secret set --vault-name <kv> --name spec-json --file spec.local.json`
-(picked up on the fetch job's next run) or bump `secrets_wo_version` and
-`terraform apply`. No image rebuild is involved. Locally,
-`docker compose up` mounts your spec file (`SPEC_FILE`, default
+In the cloud the spec is fetched at startup from the URL in the `spec-url`
+Key Vault secret (`docs/deployment/terraform.md`), so shipping is publishing
+that file — no Terraform, no `az`, no image rebuild. Publish it, then confirm
+what the deployment will actually read:
+
+```bash
+SPEC_URL="https://<host>/<path>/spec.json" python -m cli validate
+```
+
+The fetch job picks it up on its next run. An invalid or unreachable spec is
+fatal for every unit, which is why that check is worth the ten seconds.
+Locally, `docker compose up` mounts your spec file (`SPEC_FILE`, default
 `spec.example.json`) into the containers, so you iterate without
 rebuilding.
 

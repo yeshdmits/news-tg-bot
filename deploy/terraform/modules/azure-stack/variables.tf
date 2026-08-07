@@ -71,16 +71,17 @@ variable "healthcheck_url" {
   description = "Deadman monitor ping target (healthchecks.io), hit after every completed fetch pass; the URL itself is the credential"
 }
 
-variable "spec_json" {
+variable "spec_url" {
   type        = string
   sensitive   = true
-  description = "Full spec JSON content, injected into the runtime as SPEC_JSON via Key Vault. Contains channel ids — kept out of state by the write-only secret argument."
+  description = "https:// URL the runtime fetches the spec from at startup, injected as SPEC_URL via Key Vault. The URL itself is the credential — whoever holds it can read the spec, which names private chat ids."
 }
 
 # Single version counter for every write-only Key Vault secret write. The
 # provider cannot see current secret values (that is the point), so it only
 # pushes new ones when this number changes: bump it after editing any secret
-# variable (or spec.local.json) and apply.
+# variable and apply. Editing the spec is no longer one of those: the spec
+# lives behind spec_url, and changing it there needs no Terraform run.
 variable "secrets_wo_version" {
   type    = number
   default = 1

@@ -108,7 +108,7 @@ wake Postgres or fail because of it.
 
 Everything the pipeline does per source/channel comes from the spec
 (see `docs/configuration.md`), acquired at startup via `specsource.py` —
-`SPEC_JSON` inline (in the cloud, a Key Vault secret), `SPEC_URL`, or a
-`SPEC_PATH` file (local development). The spec is content-hashed; every
+`SPEC_JSON` inline, `SPEC_URL` (an HTTPS fetch — what the cloud deployment
+uses), or a `SPEC_PATH` file (local development). The spec is content-hashed; every
 archived row references the spec version that produced it, so the archive
 remains interpretable across config changes.

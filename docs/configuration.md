@@ -24,13 +24,28 @@ network blip cannot silently start the bot on the wrong configuration):
 
 | Order | Variable | Use it for |
 |---|---|---|
-| 1 | `SPEC_JSON` | The full spec as an inline string. How cloud deployments inject the config from a secret store — no filesystem needed. Container platforms cap secret/env sizes: Azure Container Apps handles the ~10 KB reference spec fine, but if your spec approaches your platform's ceiling, switch to `SPEC_URL`. |
-| 2 | `SPEC_URL` | An `https://` URL fetched once at startup (10 s timeout, redirects followed). Non-200, transport errors and unparsable bodies all abort startup. Useful for large specs or for updating the config without redeploying. Plain `http://` is refused. |
+| 1 | `SPEC_JSON` | The full spec as an inline string, for injecting the config straight from a secret store — no filesystem needed. Container platforms cap secret/env sizes, so mind your platform's ceiling: Azure Container Apps handles the ~10 KB reference spec fine. |
+| 2 | `SPEC_URL` | An `https://` URL fetched once at startup (10 s timeout, redirects followed, no retry, no cache). Non-200, transport errors and unparsable bodies all abort startup. Use it to update the config without redeploying, and for specs too large to sit in an env var. Plain `http://` is refused. **What the reference Azure deployment uses** — see [Azure](deployment/azure.md). |
 | 3 | `SPEC_PATH` | A file path — local development, compose (which mounts your file at `/app/spec.json`), and tests. |
 
 An explicit `--spec PATH` argument (on `validate` and `fetch`) beats all
 three. With no source configured at all, startup fails listing the three
 options and pointing at `spec.example.json`.
+
+The precedence is worth remembering when switching between sources: setting
+`SPEC_URL` while `SPEC_JSON` is still set anywhere in the environment leaves
+the inline copy live, silently and without an error. Remove the old variable,
+don't just add the new one.
+
+`SPEC_URL` moves the spec off your infrastructure, which is the point — but
+it also makes whatever serves it a startup dependency, and the fetch does not
+retry. The fetch job recovers on its next scheduled run; a unit that loads
+the spec as part of a deploy does not. Validating against the live URL before
+rolling anything out is the cheap way to avoid this:
+
+```bash
+SPEC_URL="https://<host>/<path>/spec.json" python -m cli validate
+```
 
 Whichever source is used, the loader logs one `spec_loaded` line at info
 level with the source kind and a SHA-256 of the exact bytes — never the

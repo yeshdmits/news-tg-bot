@@ -34,7 +34,7 @@ Secret = should come from your secret store, not plain platform config.
 
 | Variable | Secret | fetch | bot | migrate | Value |
 |---|---|---|---|---|---|
-| `SPEC_JSON` | yes | ✓ | ✓ | ✓ | The full spec JSON content. This *is* the application configuration, and it names private chat ids — treat it as a secret. Alternatively inject `SPEC_URL` or mount a file and set `SPEC_PATH`. |
+| `SPEC_URL` | yes | ✓ | ✓ | ✓ | `https://` URL the spec is fetched from at startup — what the Azure reference deployment injects. The URL is the credential: whoever holds it reads the configuration, which names private chat ids. Alternatives: `SPEC_JSON` with the full content inline, or mount a file and set `SPEC_PATH`. Exactly one — `SPEC_JSON` silently wins over `SPEC_URL` if both are set. |
 | `DATABASE_URL` | yes | ✓ | ✓ | ✓ | `postgresql://user:pass@host:5432/db?sslmode=require` |
 | `TELEGRAM_BOT_TOKEN` | yes | ✓ | ✓ | ✓ | From @BotFather |
 | `TELEGRAM_WEBHOOK_SECRET` | yes | | ✓ | ✓ | Compared against Telegram's header on every webhook call |
@@ -71,9 +71,11 @@ references at container start. An equivalent port should:
 
 - reference secrets by URI/ARN from the runtime rather than copying values
   into platform config;
-- put the spec content in the store as its own secret and inject it as
-  `SPEC_JSON` (mind your platform's secret/env size ceiling — the reference
-  spec is ~10 KB; `SPEC_URL` is the escape hatch for large specs);
+- keep the spec out of the platform entirely and store only the URL it is
+  served from, injected as `SPEC_URL` (what the Azure stack does), or put the
+  content in the store as its own secret and inject it as `SPEC_JSON` —
+  minding your platform's secret/env size ceiling, since the reference spec
+  is ~10 KB and specs only grow;
 - be explicit about what still lands in IaC state, and treat that state as
   a credential.
 
