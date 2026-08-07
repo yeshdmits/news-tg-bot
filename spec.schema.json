@@ -406,6 +406,26 @@
       "title": "ErrorsConfig",
       "type": "object"
     },
+    "FeedbackCfg": {
+      "additionalProperties": false,
+      "description": "Admin review chat for a source. Every new non-duplicate item the\nsource archives is queued for it; the chat shows one card at a time\nwith approve/reject buttons, and the answer is stored as a label on\nthe item. Independent of ``channels`` \u2014 an archive-only source can be\nreviewed exactly like a posting one.",
+      "properties": {
+        "chat_id": {
+          "title": "Chat Id",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "chat_id"
+      ],
+      "title": "FeedbackCfg",
+      "type": "object"
+    },
     "Mapping": {
       "additionalProperties": false,
       "description": "Per-source extraction rules: expressions locating each item field\nin the feed XML, plus lead/category post-processing knobs. The\nexpression grammar is documented in fetcher.mapping.",
@@ -737,6 +757,17 @@
           },
           "title": "Channels",
           "type": "array"
+        },
+        "feedback": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FeedbackCfg"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "mapping": {
           "$ref": "#/$defs/Mapping"

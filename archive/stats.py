@@ -19,6 +19,10 @@ EXPORT_COLUMNS = [
     "channel_name", "decision", "decision_reason", "matched_clause",
     "decided_utc", "delivery_status", "telegram_message_id", "posted_utc",
     "delivery_attempt", "delivery_error",
+    # The admin feedback label — what makes the export a training set rather
+    # than just a corpus. NULL review_approved means "not labelled yet".
+    "review_state", "review_approved", "review_decided_utc",
+    "review_decided_by_user_id",
 ]
 
 _EXPORT_SQL = """
@@ -32,11 +36,17 @@ SELECT
   rd.channel_name, rd.decision::text AS decision, rd.reason AS decision_reason,
   rd.matched_clause::text AS matched_clause, rd.decided_utc,
   d.status::text AS delivery_status, d.telegram_message_id, d.posted_utc,
-  d.attempt AS delivery_attempt, d.error AS delivery_error
+  d.attempt AS delivery_attempt, d.error AS delivery_error,
+  fr.state::text AS review_state, fr.approved AS review_approved,
+  fr.decided_utc AS review_decided_utc,
+  fr.decided_by_user_id AS review_decided_by_user_id
 FROM items i
 LEFT JOIN routing_decisions rd ON rd.item_id = i.item_id
 LEFT JOIN deliveries d
   ON d.item_id = rd.item_id AND d.channel_name = rd.channel_name
+-- One review per item, so this never fans the rows out; an unreviewed item
+-- simply carries NULLs.
+LEFT JOIN feedback_reviews fr ON fr.item_id = i.item_id
 WHERE i.first_seen_utc >= %s AND i.first_seen_utc < %s
 ORDER BY i.first_seen_utc, i.item_id, rd.channel_name
 """

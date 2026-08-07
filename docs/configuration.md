@@ -156,6 +156,7 @@ A channel is a Telegram chat plus its posting knobs.
 | `url_verified` | str \| null | `null` | Date you last confirmed the feed URL. `null` produces a load warning, not an error. |
 | `namespaces` | dict | `{}` | XML prefix → namespace URI map for mapping expressions. |
 | `schema_file` | str \| null | `null` | XSD path, resolved relative to the spec file's directory. When set, feeds that fail validation raise `SchemaValidationFailed` instead of being parsed loosely. |
+| `feedback` | object \| null | `null` | Admin review chat, see [Feedback](#feedback-sourcesfeedback). |
 | `notes` | str \| null | `null` | Free-form operator notes. |
 
 ### Bindings (`sources[].channels[]`)
@@ -248,6 +249,63 @@ example-wire (general_news, en, every 15 min, limit 10, cold_start=skip_all)
 
 OK: 5 sources (1 archive-only), 2 channels, 5 bindings
 ```
+
+### Feedback (`sources[].feedback`)
+
+An optional review chat. Every new non-duplicate item the source archives is
+queued for it; the chat shows **one card at a time** — title, lead, "Read
+more" link and two buttons — and the answer is stored as a boolean label on
+the item. Answering deletes the card and the next one appears.
+
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `chat_id` | str | **required** | The review group chat. Must not be a news channel id or `errors.ops_chat_id`. |
+| `enabled` | bool | `true` | `false` makes the block inert: nothing is queued, nothing is sent. |
+
+```json
+{
+  "name": "example-wire",
+  "channels": [],
+  "feedback": { "chat_id": "-100999900010", "enabled": true }
+}
+```
+
+It sits on the **source**, not on a channel or a binding, because reviewing
+is orthogonal to posting: an [archive-only](#archive-only-sources) source is
+labelled exactly like a posting one. The label has no effect on routing or
+delivery — a rejected item that was already routed still posts. What it is
+for is `cli export`, which carries `review_approved` alongside every item.
+
+Things to know:
+
+- **Order is FIFO** and nothing expires: the queue drains oldest-first and
+  every queued item eventually reaches a human. A source's first fetch queues
+  up to `fetch_limit` items at once, so expect an initial batch to work
+  through.
+- **Anyone in the chat may press.** The chat itself is the authorization
+  boundary — a press from any other chat is ignored without a reply. Keep the
+  review chat private and its membership is the access list.
+- **Several sources may share a chat.** The one-card invariant is per chat,
+  and the database enforces it, so two sources feeding one chat interleave
+  safely.
+- **Duplicates are not queued.** The label belongs to the story and the
+  original already carries it.
+- **Both units send cards.** The webhook app sends the next card the moment a
+  button is pressed, so an operator working through a queue never waits; the
+  fetch job seeds a chat that has none and repairs a send that failed. Cards
+  therefore go out even under [`DRY_RUN`](#dry-run) — like alerting, review is
+  operator surface, not publishing.
+- **The bot must be in the chat** and able to delete its own messages. Beyond
+  Telegram's 48-hour window that needs admin rights; without them the answered
+  card has its buttons stripped instead of being deleted. Either way the label
+  is already written.
+- **`register-webhook` must have run against this build.** Button presses
+  arrive as `callback_query` updates, which Telegram only delivers if
+  `allowed_updates` asks for them. The migrate job re-runs it on every
+  deploy.
+- Removing a source from the spec leaves its queued items queued — they are
+  skipped rather than dropped, so restoring the source resumes them, and
+  meanwhile they cannot stall a chat other sources feed.
 
 ### `when` predicates
 
@@ -353,8 +411,13 @@ documented default  <  spec "defaults"  <  channel registry entry  <  binding
 
 `DRY_RUN=true` (the default) suppresses **channel posting only**: posts are
 formatted, selected, and recorded in the archive as `skipped`/`dry_run`, but
-nothing is sent. Operator alerts and ops-chat replies still go out if a bot
-token is set — dry run rehearses the pipeline, not the alerting.
+nothing is sent. Operator alerts, ops-chat replies and
+[review cards](#feedback-sourcesfeedback) still go out if a bot token is set —
+dry run rehearses the pipeline, not the operator surfaces.
+
+With no `TELEGRAM_BOT_TOKEN` at all, nothing reaches Telegram but the review
+queue still fills in Postgres, so cards start flowing the moment a token
+appears.
 
 ## Worked example
 

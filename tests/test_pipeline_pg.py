@@ -37,6 +37,13 @@ class FakeTelegramAPI:
         return httpx.MockTransport(handler)
 
 
+def posts(telegram: FakeTelegramAPI) -> list[dict]:
+    """Channel posts only. A source with a feedback chat also sends review
+    cards through the same client, and those are not posts — they carry an
+    inline keyboard and go to the review chat, never to a channel."""
+    return [call for call in telegram.calls if "reply_markup" not in call]
+
+
 def feed_transport(url_map: dict[str, bytes]) -> httpx.MockTransport:
     def handler(request: httpx.Request) -> httpx.Response:
         body = url_map.get(str(request.url))
@@ -146,7 +153,7 @@ async def test_real_spec_cold_start_skip_all(db):
     deps, telegram = make_deps(db, loaded, url_map)
 
     stats = await run_once(deps)
-    assert telegram.calls == []  # cold start: skip_all everywhere
+    assert posts(telegram) == []  # cold start: skip_all everywhere
     assert stats.posted == 0
     assert stats.new_items > 0
 
@@ -207,7 +214,7 @@ async def test_run_twice_sends_nothing_second_time(db):
     reset_fetch_timers(db)
     second = await run_once(deps)
 
-    assert telegram.calls == []
+    assert posts(telegram) == []
     assert second.posted == 0
     assert second.new_items == 0
     items = db.execute("SELECT count(*) AS n FROM items").fetchone()["n"]

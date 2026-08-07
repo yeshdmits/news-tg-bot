@@ -33,6 +33,10 @@ TELEGRAM_CAPTION_LIMIT = 1024
 ELLIPSIS = "…"
 _MIN_LEAD_BUDGET = 40
 
+# Review cards are read by one operator deciding one item, not by an
+# audience, so they carry more of the lead than any channel post does.
+REVIEW_LEAD_MAX = 600
+
 
 @dataclass(frozen=True)
 class Post:
@@ -42,6 +46,15 @@ class Post:
     text: str
     image_url: str | None  # set → sendPhoto with text as caption
     link_preview: bool
+
+
+@dataclass(frozen=True)
+class ReviewCard:
+    """One approve/reject card for the admin feedback loop."""
+
+    chat_id: str
+    text: str
+    reply_markup: dict
 
 
 def truncate_word_boundary(text: str, max_chars: int) -> str:
@@ -57,6 +70,47 @@ def hashtag(text: str, *, lower: bool = True) -> str:
     """Telegram-safe hashtag: runs of non-alphanumerics become underscores."""
     slug = re.sub(r"[^0-9A-Za-z]+", "_", text).strip("_")
     return "#" + (slug.lower() if lower else slug)
+
+
+def format_review_card(
+    item: ItemRecord, source: EffectiveSource, chat_id: str
+) -> ReviewCard:
+    """Build the approve/reject card for one archived item.
+
+    Deliberately untranslated and channel-independent: the label belongs to
+    the item as the source published it, so a card must not depend on a
+    binding (archive-only sources have none) or spend translation quota on
+    text only one operator will read."""
+    tags = [hashtag(source.name)]
+    if source.region:
+        tags.append(hashtag(source.region, lower=False))
+
+    parts = [f"<b>{html.escape(item.title)}</b>"]
+    lead = item.lead_original
+    if lead and lead != item.title:
+        parts.append(html.escape(truncate_word_boundary(lead, REVIEW_LEAD_MAX)))
+    parts.append(
+        f'<a href="{html.escape(item.url_raw, quote=True)}">Read more</a>'
+        f" | {' '.join(tags)}"
+    )
+    return ReviewCard(
+        chat_id=chat_id,
+        text="\n\n".join(parts)[:TELEGRAM_MESSAGE_LIMIT],
+        reply_markup=review_keyboard(item.item_id),
+    )
+
+
+def review_keyboard(item_id: object) -> dict:
+    """The two buttons. ``callback_data`` is capped at 64 bytes by Telegram;
+    the ``fb:`` prefix plus a 36-character UUID leaves plenty of room."""
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "✅ Approve", "callback_data": f"fb:a:{item_id}"},
+                {"text": "❌ Reject", "callback_data": f"fb:r:{item_id}"},
+            ]
+        ]
+    }
 
 
 def format_post(

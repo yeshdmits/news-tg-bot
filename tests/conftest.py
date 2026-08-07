@@ -27,9 +27,9 @@ TEST_DATABASE_URL = os.environ.get(
 
 ALL_TABLES = (
     "deliveries", "routing_decisions", "translations", "item_categories",
-    "error_occurrences", "alert_outbox", "error_events", "operator_actions",
-    "bot_state", "seen_updates", "items", "fetches", "channel_state",
-    "source_state", "spec_versions",
+    "feedback_reviews", "error_occurrences", "alert_outbox", "error_events",
+    "operator_actions", "bot_state", "seen_updates", "items", "fetches",
+    "channel_state", "source_state", "spec_versions",
 )
 
 

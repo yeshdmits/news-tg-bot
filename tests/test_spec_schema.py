@@ -44,6 +44,7 @@ def test_example_ids_are_obviously_fake():
     raw = json.loads(EXAMPLE.read_text())
     ids = [c["id"] for c in raw["channels"]] + [raw["errors"]["ops_chat_id"]]
     ids += [str(uid) for uid in raw["errors"]["authorization"]["write_allowlist"]]
+    ids += [s["feedback"]["chat_id"] for s in raw["sources"] if "feedback" in s]
     for chat_id in ids:
         assert FAKE_ID_TOKEN in chat_id, chat_id
 
@@ -68,6 +69,7 @@ def test_example_demonstrates_the_feature_surface():
         '"include_categories"',
         '"max_age_min": null,',
         '"channels": [],',  # an archive-only source
+        '"feedback"',  # ...which is nonetheless reviewed
         '"statistics"',
         '"ops_topic_id": 42',
         '"write_allowlist": [999900001]',

@@ -187,6 +187,75 @@ def test_ops_chat_id_must_not_be_a_news_channel(tmp_path):
         load_spec(write_spec(tmp_path, spec))
 
 
+def test_feedback_chat_must_not_be_a_news_channel(tmp_path):
+    """A review card carries buttons and is deleted once answered — sending
+    one into an audience channel is the same class of mistake as alerting
+    into one."""
+    spec = minimal_spec()
+    spec["sources"][0]["feedback"] = {"chat_id": "-1001"}  # == news-ch
+    with pytest.raises(SpecError, match="refusing to post review cards"):
+        load_spec(write_spec(tmp_path, spec))
+
+
+def test_feedback_chat_must_not_be_the_ops_chat(tmp_path):
+    spec = minimal_spec()
+    spec["errors"] = {"ops_chat_id": "-5000"}
+    spec["sources"][0]["feedback"] = {"chat_id": "-5000"}
+    with pytest.raises(SpecError, match="need separate chats"):
+        load_spec(write_spec(tmp_path, spec))
+
+
+def test_feedback_clash_is_checked_after_defaults_are_applied(tmp_path):
+    """The guard must see the *effective* chat, or a spec-wide default could
+    smuggle a news channel past it."""
+    spec = minimal_spec()
+    spec["defaults"] = {"feedback": {"chat_id": "-1001"}}
+    with pytest.raises(SpecError, match="refusing to post review cards"):
+        load_spec(write_spec(tmp_path, spec))
+
+
+def test_a_disabled_feedback_chat_is_not_checked_and_not_resolved(tmp_path):
+    """enabled: false means the block is inert — it neither clashes nor
+    produces a review chat."""
+    spec = minimal_spec()
+    spec["sources"][0]["feedback"] = {"chat_id": "-1001", "enabled": False}
+    loaded = load_spec(write_spec(tmp_path, spec))
+
+    from feedspec.resolve import resolve_source
+
+    assert resolve_source(loaded.spec, loaded.spec.sources[0]).feedback_chat_id is None
+
+
+def test_feedback_resolves_from_defaults_and_is_overridden_per_source(tmp_path):
+    spec = minimal_spec()
+    spec["defaults"] = {"feedback": {"chat_id": "-9001"}}
+    spec["sources"].append(dict(spec["sources"][0], name="src-b",
+                                feedback={"chat_id": "-9002"}))
+    loaded = load_spec(write_spec(tmp_path, spec))
+
+    from feedspec.resolve import resolve_source
+
+    chats = {s.name: resolve_source(loaded.spec, s).feedback_chat_id
+             for s in loaded.spec.sources}
+    assert chats == {"src-a": "-9001", "src-b": "-9002"}
+
+
+def test_a_source_without_feedback_is_not_reviewed(tmp_path):
+    loaded = load_spec(write_spec(tmp_path, minimal_spec()))
+
+    from feedspec.resolve import resolve_source
+
+    assert resolve_source(loaded.spec, loaded.spec.sources[0]).feedback_chat_id is None
+
+
+def test_several_sources_may_share_one_review_chat(tmp_path):
+    """The one-card invariant is per chat, not per source."""
+    spec = minimal_spec()
+    spec["sources"][0]["feedback"] = {"chat_id": "-9001"}
+    spec["sources"].append(dict(spec["sources"][0], name="src-b"))
+    assert load_spec(write_spec(tmp_path, spec)) is not None
+
+
 def test_errors_source_override_must_name_known_source(tmp_path):
     spec = minimal_spec()
     spec["errors"] = {
